@@ -1,8 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$HOOK_DIR/lib_json.sh"
+
 payload="$(cat | tr '\n' ' ')"
-command="$(printf '%s' "$payload" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+command="$(extract_json_field "$payload" "command")"
 
 emit_decision() {
   decision="$1"
