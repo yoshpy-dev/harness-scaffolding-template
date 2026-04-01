@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Read-only review specialist for correctness, security, maintainability, test quality, and documentation drift.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, Write, Edit
 model: sonnet
 skills:
   - review
