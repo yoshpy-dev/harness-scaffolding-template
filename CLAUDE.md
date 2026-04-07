@@ -8,7 +8,8 @@ Use this file only for Claude-specific guidance that must be always-on.
 
 - `/plan` is the only manual-trigger skill. All others (work, review, verify, pr, sync-docs, audit-harness, loop) are auto-invoked.
 - Use `/plan` before risky, ambiguous, or multi-file work. It creates the branch.
-- After /work, proceed through /review, /verify, then /pr automatically.
+- `/plan` ends with a flow selection prompt: standard (/work) or Ralph Loop (/loop). Follow the user's choice.
+- After /work or /loop, proceed through /review, /verify, then /pr automatically.
 - `/pr` creates the pull request, archives the plan, and completes the hand-off. A task is "done" when the PR is created.
 - Prefer `.claude/rules/` for topic or path-specific guidance.
 - Prefer `.claude/skills/` for workflows and reusable playbooks.

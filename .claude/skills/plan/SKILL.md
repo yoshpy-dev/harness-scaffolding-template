@@ -2,7 +2,7 @@
 name: plan
 description: Create or refresh a scoped implementation plan before risky, ambiguous, long-running, or multi-file work. Accepts an optional GitHub issue number or URL for context pre-fill. Creates a feature branch after plan approval. Manual trigger only.
 disable-model-invocation: true
-allowed-tools: Read, Grep, Glob, Write, Edit, Bash
+allowed-tools: Read, Grep, Glob, Write, Edit, Bash, AskUserQuestion
 ---
 Create or update a plan in `docs/plans/active/`.
 
@@ -40,12 +40,22 @@ Create or update a plan in `docs/plans/active/`.
    c. Without issue: `git checkout -b <type>/<slug>`
    d. Slug = plan filename slug. Do NOT push yet.
 
+8. **Flow selection**: Use **AskUserQuestion** to ask the user which execution flow to use.
+   - Question: "どちらの開発フローで進めますか？"
+   - Options:
+     1. **標準フロー (/work)** — Claude Code 内で対話的に実装を進める（短〜中規模タスク向け）
+     2. **Ralph Loop (/loop)** — ターミナルで自律反復実行する（大規模・持続的自律作業向け）
+   - If the plan mentions large-scale refactoring, migration, test-coverage campaigns, or multi-file autonomous work, recommend Ralph Loop.
+   - Otherwise, recommend 標準フロー.
+   - After the user chooses, state which flow will be used next and proceed accordingly.
+
 ## Output
 
 - Updated or newly created plan file
 - One paragraph summary of what is in scope
 - Explicit statement of what remains unknown
 - Feature branch created and checked out
+- Chosen execution flow (standard /work or Ralph Loop /loop)
 
 ## Anti-bottleneck
 
