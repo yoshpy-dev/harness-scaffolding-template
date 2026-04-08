@@ -90,7 +90,12 @@ After approval, print the run command:
 When the user returns after running the loop:
 1. Read `.harness/state/loop/status` to check outcome
 2. Read `.harness/state/loop/progress.log` for what happened
-3. Suggest the post-implementation chain: `/self-review` → `/verify` → `/test` → `/codex-review` (optional) → `/pr`
+3. Delegate the post-implementation pipeline to subagents per `.claude/rules/subagent-policy.md`:
+   a. `Task(subagent_type="reviewer")` → `/self-review` — stop if CRITICAL findings
+   b. `Task(subagent_type="verifier")` → `/verify` — stop if fail verdict
+   c. `Task(subagent_type="tester")` → `/test` — stop if fail verdict
+   d. `Task(subagent_type="doc-maintainer")` → `/sync-docs`
+   e. `/codex-review` (optional, inline) → `/pr`
 4. If a worktree was created, ask the user whether to keep or remove it (`git worktree remove .claude/worktrees/<slug>`)
 
 ## Anti-bottleneck

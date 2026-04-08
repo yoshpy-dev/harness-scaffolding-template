@@ -25,7 +25,12 @@ Work from the active plan, not from memory alone.
 6. If repeated failures occur, reduce scope, inspect evidence, and revise the plan instead of thrashing.
 7. Keep docs, contracts, and tests aligned with behavior changes.
 8. Before presenting completion, run `./scripts/run-verify.sh` or equivalent deterministic checks.
-9. After criteria met, proceed to /self-review, /verify, /test, /codex-review (optional), then /pr.
+9. After criteria met, delegate the post-implementation pipeline to subagents per `.claude/rules/subagent-policy.md`:
+   a. `Task(subagent_type="reviewer")` → `/self-review` — stop if CRITICAL findings
+   b. `Task(subagent_type="verifier")` → `/verify` — stop if fail verdict
+   c. `Task(subagent_type="tester")` → `/test` — stop if fail verdict
+   d. `Task(subagent_type="doc-maintainer")` → `/sync-docs`
+   e. `/codex-review` (optional, inline) → `/pr`
 
 ## Scope discipline
 

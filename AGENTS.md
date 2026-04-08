@@ -22,9 +22,9 @@ Build coding-agent workflows that are:
 1. Explore
 2. Plan (manual — creates plan, selects flow) [+ optional Codex plan advisory]
 3. Work (auto — creates branch) or Loop (auto — creates worktree)
-4. Self-review (auto — /self-review)
-5. Verify (auto — spec compliance + static analysis)
-6. Test (auto — behavioral tests)
+4. Self-review (auto — via `reviewer` subagent)
+5. Verify (auto — via `verifier` subagent)
+6. Test (auto — via `tester` subagent)
 7. Codex review (auto, optional — cross-model second opinion)
 8. PR (auto — includes hand-off)
 9. CI verify + human merge
