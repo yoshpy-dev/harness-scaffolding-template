@@ -36,9 +36,7 @@ If a subagent fails to execute (tool error, not a review finding), run the corre
 
 ## Planning — always inline
 
-`/plan` runs in the main context (not via the `planner` subagent) because it relies heavily on `AskUserQuestion` for user interaction (task type selection, objective confirmation, flow selection, Codex advisory response). Subagent execution would add indirection to these conversations without meaningful benefit.
-
-The `planner` agent definition remains available for edge cases (e.g., delegating plan research to a subagent while working on something else), but the default is inline.
+`/plan` runs in the main context because it relies heavily on `AskUserQuestion` for user interaction (task type selection, objective confirmation, flow selection, Codex advisory response). Subagent execution would add indirection without benefit. No agent definition exists for this skill.
 
 ## Documentation sync — always delegate
 
