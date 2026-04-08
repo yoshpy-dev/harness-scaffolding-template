@@ -11,7 +11,7 @@ Use this file only for Claude-specific guidance that must be always-on.
 - `/plan` ends with a flow selection prompt: standard (/work) or Ralph Loop (/loop). Follow the user's choice.
 - `/work` creates a normal branch (`git checkout -b`) and starts implementation.
 - `/loop` creates a Git Worktree (`git worktree add`) for isolated autonomous iteration.
-- After /work or /loop, proceed through /self-review, /verify, /test, then /codex-review (optional), then /pr automatically.
+- After /work or /loop, the post-implementation pipeline runs automatically via subagents, then /codex-review (optional), then /pr.
 - `/self-review` is diff quality only. `/verify` is spec compliance + static analysis. `/test` is behavioral tests. Each produces a separate report.
 - Codex advisory is optional. If `codex` CLI is available, `/plan` and `/codex-review` invoke it for second-opinion feedback. If unavailable, the step is silently skipped and the flow continues unchanged.
 - Codex findings are presented to the user for judgment — never auto-applied.
