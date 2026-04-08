@@ -1,19 +1,45 @@
 #!/usr/bin/env sh
 set -eu
 
-mkdir -p .harness/state .harness/logs docs/plans/active docs/plans/archive docs/reports docs/tech-debt
+echo "=== Harness scaffold bootstrap ==="
+echo
 
-if [ ! -f .claude/settings.json ]; then
-  cp .claude/settings.minimal.example.json .claude/settings.json
-  echo "Created .claude/settings.json from the minimal example."
+# --- 1. Create required directories ---
+mkdir -p .harness/state .harness/logs docs/plans/active docs/plans/archive docs/reports docs/evidence docs/tech-debt
+echo "[ok] Required directories created."
+
+# --- 2. Ensure all shell scripts are executable ---
+for dir in scripts .claude/hooks packs/languages; do
+  if [ -d "$dir" ]; then
+    find "$dir" -type f -name '*.sh' ! -perm -u+x -exec chmod +x {} +
+  fi
+done
+echo "[ok] Shell script permissions verified."
+
+# --- 3. Validate settings.json exists (hooks config) ---
+if [ -f .claude/settings.json ]; then
+  echo "[ok] .claude/settings.json found (hooks and permissions active)."
 else
-  echo ".claude/settings.json already exists; leaving it unchanged."
+  echo "[warn] .claude/settings.json not found — hooks will not be active."
+  echo "       This file should be committed to git. Check if it was accidentally removed."
 fi
 
-echo "Scaffold bootstrap complete."
+# --- 4. Run template structure check ---
+if [ -x scripts/check-template.sh ]; then
+  echo
+  echo "--- Running template structure check ---"
+  if ./scripts/check-template.sh; then
+    echo "[ok] Template structure check passed."
+  else
+    echo "[warn] Template structure check found issues (see above)."
+  fi
+fi
+
+echo
+echo "Bootstrap complete."
 echo
 echo "Next steps:"
-echo "  1. Edit AGENTS.md and CLAUDE.md"
-echo "  2. Customize .claude/rules and language packs"
-echo "  3. Create a plan with ./scripts/new-feature-plan.sh <slug>"
-echo "  4. Run ./scripts/run-verify.sh before claiming a task is done"
+echo "  1. Edit AGENTS.md and CLAUDE.md for your project"
+echo "  2. Customize .claude/rules/ and packs/languages/ as needed"
+echo "  3. Create a plan: ./scripts/new-feature-plan.sh <slug>"
+echo "  4. Personal overrides (extra permissions, etc): create .claude/settings.local.json (gitignored)"

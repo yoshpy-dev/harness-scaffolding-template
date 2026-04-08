@@ -34,6 +34,9 @@ case "$command" in
   *"rm -rf "*)
     emit_decision "ask" "Recursive delete requires explicit confirmation."
     ;;
+  *"gh pr create"*)
+    emit_decision "ask" "gh pr create を検出。/pr スキル（Skill tool）経由で実行していますか？ /pr スキルは日本語テンプレート、事前チェック、プランアーカイブを強制します。直接実行は非推奨です。"
+    ;;
 esac
 
 exit 0
