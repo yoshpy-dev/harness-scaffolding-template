@@ -18,15 +18,15 @@ if [ -d docs/plans/active ]; then
 fi
 
 {
-  printf '# Pre-compact checkpoint\n\n'
-  printf '- Timestamp: %s\n' "$ts"
-  printf '- Branch: %s\n' "$branch"
-  printf '- Active plan: %s\n\n' "$plan"
-  printf '## Git status\n\n'
+  printf '%s\n\n' '# Pre-compact checkpoint'
+  printf '%s\n' "- Timestamp: $ts"
+  printf '%s\n' "- Branch: $branch"
+  printf '%s\n\n' "- Active plan: $plan"
+  printf '%s\n\n' '## Git status'
   if command -v git >/dev/null 2>&1; then
     git status --short 2>/dev/null || true
   else
-    printf 'git not available\n'
+    printf '%s\n' 'git not available'
   fi
 } > .harness/state/precompact-checkpoint.md
 
