@@ -13,8 +13,7 @@ required_files="
 README.md
 AGENTS.md
 CLAUDE.md
-.claude/settings.minimal.example.json
-.claude/settings.advanced.example.json
+.claude/settings.json
 docs/research/approach-comparison.md
 docs/roadmap/harness-maturity-model.md
 scripts/run-verify.sh
@@ -50,18 +49,14 @@ for agent_file in $(find .claude/agents -type f -name '*.md'); do
   done
 done
 
-# --- Settings example files must reference only existing hook scripts ---
-for settings_file in .claude/settings.minimal.example.json .claude/settings.advanced.example.json; do
-  if [ ! -f "$settings_file" ]; then
-    continue
-  fi
-  # Extract hook script paths from "command" fields
-  grep -o '"\./.claude/hooks/[^"]*"' "$settings_file" 2>/dev/null | tr -d '"' | while IFS= read -r hook_path; do
+# --- Settings file must reference only existing hook scripts ---
+if [ -f .claude/settings.json ]; then
+  grep -o '"\./.claude/hooks/[^"]*"' .claude/settings.json 2>/dev/null | tr -d '"' | while IFS= read -r hook_path; do
     if [ ! -f "$hook_path" ]; then
-      fail "Settings file $settings_file references missing hook: $hook_path"
+      fail "Settings file .claude/settings.json references missing hook: $hook_path"
     fi
   done
-done
+fi
 
 if [ "$status" -eq 0 ]; then
   echo "Template structure looks good."
