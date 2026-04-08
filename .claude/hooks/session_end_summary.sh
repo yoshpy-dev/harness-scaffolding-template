@@ -27,4 +27,18 @@ fi
   fi
 } > .harness/state/session-end.md
 
+# WIP commit on feature branches before session end
+if command -v git >/dev/null 2>&1; then
+  current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' 'unknown')"
+  case "$current_branch" in
+    main|master|unknown) ;;
+    *)
+      if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+        git add -A 2>/dev/null || true
+        git commit -m "wip: checkpoint before session end" 2>/dev/null || true
+      fi
+      ;;
+  esac
+fi
+
 exit 0

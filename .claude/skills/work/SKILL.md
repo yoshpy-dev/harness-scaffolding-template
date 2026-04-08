@@ -15,6 +15,11 @@ Work from the active plan, not from memory alone.
 1. Read the current active plan in `docs/plans/active/`.
 2. Confirm acceptance criteria, verify plan, and test plan before editing code.
 3. Implement in small slices that can be reviewed and verified independently.
+3a. **Commit after each verified slice** (Validation Gate):
+    - Run `./scripts/run-verify.sh` (or equivalent) after completing a slice.
+    - If verification passes, stage the slice's files and commit with conventional format: `<type>: <description>`.
+    - If verification fails, fix before committing. Do not accumulate unverified changes.
+    - See `.claude/rules/git-commit-strategy.md` for the full policy.
 4. Update the plan's progress checklist while working.
 5. If the task splits cleanly, delegate focused research or review to subagents.
 6. If repeated failures occur, reduce scope, inspect evidence, and revise the plan instead of thrashing.
@@ -44,6 +49,7 @@ Work from the active plan, not from memory alone.
 Do NOT present a task as complete unless ALL of the following are true:
 
 - [ ] `./scripts/run-verify.sh` exits 0 (or a project-specific verifier passes)
+- [ ] Each slice is individually committed with a conventional commit message
 - [ ] The active plan's progress checklist is fully updated
 - [ ] Any discovered tech debt is recorded in `docs/tech-debt/`
 

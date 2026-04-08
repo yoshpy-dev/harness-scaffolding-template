@@ -62,6 +62,7 @@ mkdir -p "${LOOP_DIR}"
 
 # Initialize or read stuck counter
 stuck_count=0
+uncommitted_count=0
 if [ -f "${LOOP_DIR}/stuck.count" ]; then
   stuck_count="$(cat "${LOOP_DIR}/stuck.count")"
 fi
@@ -137,6 +138,18 @@ while [ "$iteration" -lt "$MAX_ITERATIONS" ]; do
     fi
   fi
 
+  # Check for uncommitted changes after each iteration
+  if command -v git >/dev/null 2>&1; then
+    uncommitted="$(git status --porcelain 2>/dev/null || true)"
+    if [ -n "$uncommitted" ]; then
+      uncommitted_count=$((uncommitted_count + 1))
+      echo "> [orchestrator] Warning: uncommitted changes detected after iteration ${iteration} (total: ${uncommitted_count})"
+      if [ -f "${LOOP_DIR}/progress.log" ]; then
+        printf '\n> [orchestrator] Warning: uncommitted changes after iteration %d\n' "$iteration" >> "${LOOP_DIR}/progress.log"
+      fi
+    fi
+  fi
+
   # Optional verification after each iteration
   if [ "$VERIFY" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     echo "--- Running verification ---"
@@ -165,4 +178,10 @@ echo "- Iterations run: ${iteration}"
 echo "- Final status: ${final_status}"
 echo "- Started: ${start_ts}"
 echo "- Ended: ${end_ts}"
+echo "- Uncommitted warnings: ${uncommitted_count}"
 echo "- Logs: ${LOOP_DIR}/iteration-*.log"
+if [ "$uncommitted_count" -gt 0 ]; then
+  echo ""
+  echo "Warning: ${uncommitted_count} iteration(s) left uncommitted changes."
+  echo "Review with: git status && git diff"
+fi

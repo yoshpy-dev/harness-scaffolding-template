@@ -104,6 +104,18 @@ All loop state lives in `.harness/state/loop/`:
 | Verification | `--verify` flag runs `run-verify.sh` after each iteration |
 | Prompt rules | Safety rules embedded in every template (no sudo, no force push) |
 
+### Commit verification
+
+The orchestrator monitors uncommitted changes after each iteration:
+
+- After every iteration, `git status --porcelain` is checked
+- If uncommitted changes are detected, a warning is logged to stdout and `progress.log`
+- Warnings use the `> [orchestrator]` prefix for easy filtering
+- The loop does NOT stop on uncommitted changes (advisory only)
+- A summary of uncommitted warnings is printed at the end of the loop
+
+This ensures the agent's commit behavior is visible and auditable without blocking progress.
+
 ### Context strategy
 
 Each `claude -p` invocation starts with zero chat history. The prompt instructs the agent to:
@@ -140,6 +152,7 @@ Return to Claude Code
 - Review `progress.log` after the loop finishes — it tells the full story
 - If the agent gets stuck, edit `PROMPT.md` with more specific guidance and restart
 - For complex tasks, create a plan first (`/plan`) and pass the slug to init
+- The orchestrator checks for uncommitted changes after each iteration — if you see warnings in the summary, review `progress.log` for details and consider adding more specific commit instructions to `PROMPT.md`
 
 ## Customizing prompts
 

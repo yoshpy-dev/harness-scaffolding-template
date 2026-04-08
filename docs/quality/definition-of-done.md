@@ -6,6 +6,7 @@ A task is done only when all applicable items are satisfied.
 
 - [ ] Active plan exists or was explicitly deemed unnecessary
 - [ ] Acceptance criteria were addressed
+- [ ] Each implementation slice is individually committed (see `.claude/rules/git-commit-strategy.md`)
 - [ ] Self-review artifact exists (diff quality)
 - [ ] Verification was run and recorded (spec compliance + static analysis)
 - [ ] Test artifact exists (behavioral tests pass)

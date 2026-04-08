@@ -31,7 +31,7 @@ Each iteration must:
    - Result: <pass/fail/partial>
    - Next: <what the next iteration should do>
    ```
-5. Commit the change with a descriptive message
+5. Commit the change with a conventional commit message: `<type>: <description>` (e.g., `feat: add login endpoint`, `fix: handle null input in parser`). Do NOT leave uncommitted changes — the orchestrator monitors for this and will log warnings.
 
 ## Completion rules
 

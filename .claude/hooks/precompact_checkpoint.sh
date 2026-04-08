@@ -30,4 +30,18 @@ fi
   fi
 } > .harness/state/precompact-checkpoint.md
 
+# WIP commit on feature branches before context compaction
+if command -v git >/dev/null 2>&1; then
+  current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf '%s' 'unknown')"
+  case "$current_branch" in
+    main|master|unknown) ;;
+    *)
+      if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+        git add -A 2>/dev/null || true
+        git commit -m "wip: checkpoint before context compaction" 2>/dev/null || true
+      fi
+      ;;
+  esac
+fi
+
 exit 0
