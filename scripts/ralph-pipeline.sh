@@ -412,7 +412,7 @@ run_inner_loop() {
 
   run_claude "$_impl_prompt" "$_impl_log" "$_impl_extra"
 
-  # Capture session ID from JSON output (primary) or log grep (fallback)
+  # Capture session ID from JSON output (no grep fallback — warns if absent)
   _new_session=""
   if [ -f "${_impl_log}.json" ] && [ -s "${_impl_log}.json" ]; then
     _new_session="$(jq -r '.session_id // empty' "${_impl_log}.json" 2>/dev/null || true)"

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-09T09:25:58Z",
+  "timestamp": "2026-04-09T14:06:11Z",
   "all_pass": true,
   "probes": [
     {
@@ -17,6 +17,10 @@
     {
       "probe": "git_available",
       "result": "pass"
+    },
+    {
+      "probe": "json_output_format",
+      "result": "skip_dry_run"
     },
     {
       "probe": "codex_cli",
