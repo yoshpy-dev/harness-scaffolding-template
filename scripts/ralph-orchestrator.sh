@@ -86,7 +86,10 @@ parse_slices() {
   fi
 }
 
-# Parse slices from a directory of slice-*.md files
+# Parse slices from a directory of slice-*.md files.
+# Supports two field formats per slice:
+#   1. Inline: "- Objective: ...", "- Dependencies: ...", "- Affected files: ..."
+#   2. Section headers: "## Objective" (next non-empty line), "## Dependencies", "## Affected files"
 parse_slices_directory() {
   _plan_dir="$1"
   _found=0
@@ -95,27 +98,22 @@ parse_slices_directory() {
     [ -f "$_slice_file" ] || continue
     _found=1
 
-    # Extract slug from filename: slice-1-auth-api.md -> auth-api
+    # Extract slug from filename: slice-1-auth-api.md -> 1-auth-api
+    # Keeps the number prefix to guarantee uniqueness across slices
     _basename="$(basename "$_slice_file" .md)"
-    _slug="$(echo "$_basename" | sed 's/^slice-[0-9]*-//')"
+    _slug="$(echo "$_basename" | sed 's/^slice-//')"
 
     _objective=""
     _deps=""
     _files=""
+    _section=""
 
     while IFS= read -r line; do
       case "$line" in
-        "## Objective"*)
-          # Read next non-empty line as objective
-          while IFS= read -r obj_line; do
-            case "$obj_line" in
-              ""|\#*) continue ;;
-              *) _objective="$obj_line"; break ;;
-            esac
-          done
-          ;;
+        # --- Inline format ---
         "- Objective: "*)
           _objective="$(echo "$line" | sed 's/^- Objective: *//')"
+          _section=""
           ;;
         "- Dependencies: "*)
           _raw_deps="$(echo "$line" | sed 's/^- Dependencies: *//')"
@@ -123,9 +121,45 @@ parse_slices_directory() {
             none|None|"") _deps="" ;;
             *) _deps="$_raw_deps" ;;
           esac
+          _section=""
           ;;
         "- Affected files: "*)
           _files="$(echo "$line" | sed 's/^- Affected files: *//' | tr -d '[]')"
+          _section=""
+          ;;
+        # --- Section header format ---
+        "## Objective"*)   _section="objective" ;;
+        "## Dependencies"*)  _section="deps" ;;
+        "## Affected files"*) _section="files" ;;
+        "## "*)            _section="" ;;
+        # --- Section body ---
+        *)
+          if [ -n "$_section" ] && [ -n "$line" ]; then
+            case "$_section" in
+              objective)
+                if [ -z "$_objective" ]; then
+                  _objective="$line"
+                fi
+                ;;
+              deps)
+                _raw_dep="$(echo "$line" | sed 's/^- *//' | tr -d '`')"
+                case "$_raw_dep" in
+                  none|None) ;;
+                  *)
+                    if [ -n "$_raw_dep" ]; then
+                      _deps="${_deps:+${_deps}, }${_raw_dep}"
+                    fi
+                    ;;
+                esac
+                ;;
+              files)
+                _raw_file="$(echo "$line" | sed 's/^- *//' | tr -d '`')"
+                if [ -n "$_raw_file" ]; then
+                  _files="${_files:+${_files}, }${_raw_file}"
+                fi
+                ;;
+            esac
+          fi
           ;;
       esac
     done < "$_slice_file"
