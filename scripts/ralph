@@ -35,7 +35,7 @@ Commands:
   abort [--slice <name>]     Safely stop and clean up
 
 Run Options:
-  --plan <file>              Plan file (auto-detected from docs/plans/active/ if omitted)
+  --plan <path>              Plan file or directory (auto-detected from docs/plans/active/ if omitted)
   --slices                   Run multi-worktree orchestrator mode
   --max-iterations N         Total iteration cap (default: 20)
   --max-parallel N           Max concurrent slices in orchestrator mode (default: 4)
@@ -99,17 +99,30 @@ cmd_run() {
 
   # Auto-detect plan if not specified
   if [ -z "$_plan" ]; then
-    _plan="$(ls -t docs/plans/active/*.md 2>/dev/null | head -1 || true)"
+    # Check for directory-based plans first (newest by modification time)
+    _plan="$(find docs/plans/active -maxdepth 1 -type d ! -name active 2>/dev/null | while read -r d; do
+      if [ -f "${d}/_manifest.md" ]; then echo "$d"; fi
+    done | head -1 || true)"
+    # Fall back to single-file plans
     if [ -z "$_plan" ]; then
-      echo "Error: no plan found. Run 'ralph plan' first or specify --plan <file>"
+      _plan="$(ls -t docs/plans/active/*.md 2>/dev/null | head -1 || true)"
+    fi
+    if [ -z "$_plan" ]; then
+      echo "Error: no plan found. Run 'ralph plan' first or specify --plan <file-or-directory>"
       exit 1
     fi
     log "Auto-detected plan: ${_plan}"
   fi
 
-  if [ ! -f "$_plan" ]; then
-    echo "Error: plan file not found: ${_plan}"
+  if [ ! -f "$_plan" ] && [ ! -d "$_plan" ]; then
+    echo "Error: plan not found: ${_plan}"
     exit 1
+  fi
+
+  # Auto-enable slices mode for directory-based plans
+  if [ -d "$_plan" ] && [ "$_slices" -eq 0 ]; then
+    log "Directory-based plan detected, enabling --slices mode automatically"
+    _slices=1
   fi
 
   if [ "$_slices" -eq 1 ]; then

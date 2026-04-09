@@ -92,12 +92,21 @@ After approval, print the run command based on the selected mode:
 ./scripts/ralph-loop.sh --verify --max-iterations 10  # bounded
 ```
 
-**Pipeline mode:**
+**Pipeline mode (single):**
 ```sh
 ./scripts/ralph run                              # auto-detect plan, single pipeline
 ./scripts/ralph run --preflight --dry-run         # validate setup first
 ./scripts/ralph run --max-iterations 15           # bounded
-./scripts/ralph run --slices --plan <plan-file>   # multi-worktree parallel
+```
+
+**Pipeline mode (parallel slices with unified PR):**
+```sh
+# Directory-based plan (auto-detects --slices mode)
+./scripts/ralph run --plan docs/plans/active/<date>-<slug>/ --unified-pr
+# Explicit slices mode
+./scripts/ralph run --slices --plan <plan-file-or-dir> --unified-pr
+# Dry run to verify slice parsing
+./scripts/ralph run --slices --plan <plan-dir> --dry-run
 ```
 
 ## Output
