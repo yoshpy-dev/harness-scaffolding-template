@@ -21,12 +21,12 @@ UNIFIED_PR=0
 
 usage() {
   cat <<'USAGE'
-Usage: ralph-orchestrator.sh --plan <plan-file> [OPTIONS]
+Usage: ralph-orchestrator.sh --plan <plan-file-or-directory> [OPTIONS]
 
 Multi-worktree parallel pipeline orchestrator for Ralph Loop.
 
 Options:
-  --plan <file>          Path to a Ralph Loop plan with vertical slices (required)
+  --plan <path>          Path to a plan file (inline slices) or plan directory (slice-*.md files) (required)
   --max-parallel N       Max concurrent worktree pipelines (default: 4)
   --max-iterations N     Per-slice iteration cap passed to ralph-pipeline.sh (default: 20)
   --unified-pr           Create a single unified PR instead of per-slice PRs
@@ -49,8 +49,12 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ -z "$PLAN_FILE" ] || [ ! -f "$PLAN_FILE" ]; then
-  echo "Error: --plan <file> is required and must exist"
+if [ -z "$PLAN_FILE" ]; then
+  echo "Error: --plan <file-or-directory> is required"
+  usage
+fi
+if [ ! -f "$PLAN_FILE" ] && [ ! -d "$PLAN_FILE" ]; then
+  echo "Error: --plan target not found: ${PLAN_FILE}"
   usage
 fi
 
@@ -68,8 +72,74 @@ log_error() { printf '[%s] ERROR: %s\n' "$(ts)" "$*" >&2; }
 # ═══════════════════════════════════════════════════════════════════
 
 # Parse slice definitions from the plan.
-# Output: one line per slice: slug|objective|dependencies|affected_files
+# Output: one line per slice: slug|objective|dependencies|affected_files|plan_file_path
+# Automatically detects input type:
+#   - Directory with slice-*.md files → parse_slices_directory()
+#   - Single markdown file with ### Slice N: headers → parse_slices_inline()
 parse_slices() {
+  _plan="$1"
+
+  if [ -d "$_plan" ]; then
+    parse_slices_directory "$_plan"
+  else
+    parse_slices_inline "$_plan"
+  fi
+}
+
+# Parse slices from a directory of slice-*.md files
+parse_slices_directory() {
+  _plan_dir="$1"
+  _found=0
+
+  for _slice_file in "$_plan_dir"/slice-*.md; do
+    [ -f "$_slice_file" ] || continue
+    _found=1
+
+    # Extract slug from filename: slice-1-auth-api.md -> auth-api
+    _basename="$(basename "$_slice_file" .md)"
+    _slug="$(echo "$_basename" | sed 's/^slice-[0-9]*-//')"
+
+    _objective=""
+    _deps=""
+    _files=""
+
+    while IFS= read -r line; do
+      case "$line" in
+        "## Objective"*)
+          # Read next non-empty line as objective
+          while IFS= read -r obj_line; do
+            case "$obj_line" in
+              ""|\#*) continue ;;
+              *) _objective="$obj_line"; break ;;
+            esac
+          done
+          ;;
+        "- Objective: "*)
+          _objective="$(echo "$line" | sed 's/^- Objective: *//')"
+          ;;
+        "- Dependencies: "*)
+          _raw_deps="$(echo "$line" | sed 's/^- Dependencies: *//')"
+          case "$_raw_deps" in
+            none|None|"") _deps="" ;;
+            *) _deps="$_raw_deps" ;;
+          esac
+          ;;
+        "- Affected files: "*)
+          _files="$(echo "$line" | sed 's/^- Affected files: *//' | tr -d '[]')"
+          ;;
+      esac
+    done < "$_slice_file"
+
+    printf '%s|%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files" "$_slice_file"
+  done
+
+  if [ "$_found" -eq 0 ]; then
+    return 1
+  fi
+}
+
+# Parse slices from inline ### Slice N: headers in a single plan file (legacy)
+parse_slices_inline() {
   _plan="$1"
   _in_slice=0
   _slug=""
@@ -83,7 +153,7 @@ parse_slices() {
       "### Slice "*)
         # Emit previous slice if any
         if [ -n "$_slug" ]; then
-          printf '%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files"
+          printf '%s|%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files" "$_plan"
         fi
         # Extract slug from header (e.g., "### Slice 1: auth-module" -> "auth-module")
         _raw_name="$(echo "$line" | sed 's/^### Slice [0-9]*: *//')"
@@ -114,7 +184,7 @@ parse_slices() {
         "## "*)
           # New top-level section — end slice parsing
           if [ -n "$_slug" ]; then
-            printf '%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files"
+            printf '%s|%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files" "$_plan"
           fi
           _in_slice=0
           _slug=""
@@ -129,18 +199,31 @@ parse_slices() {
 
   # Emit last slice
   if [ -n "$_slug" ]; then
-    printf '%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files"
+    printf '%s|%s|%s|%s|%s\n' "$_slug" "$_objective" "$_deps" "$_files" "$_plan"
   fi
 }
 
-# Parse shared-file locklist from the plan
+# Parse shared-file locklist from the plan (dual-mode: directory or file)
 parse_locklist() {
   _plan="$1"
+
+  if [ -d "$_plan" ]; then
+    _manifest="${_plan}/_manifest.md"
+    if [ -f "$_manifest" ]; then
+      parse_locklist_from_file "$_manifest"
+    fi
+  else
+    parse_locklist_from_file "$_plan"
+  fi
+}
+
+parse_locklist_from_file() {
+  _file="$1"
   _in_locklist=0
 
   while IFS= read -r line; do
     case "$line" in
-      "### Shared-file locklist"*)
+      "### Shared-file locklist"*|"## Shared-file locklist"*)
         _in_locklist=1
         continue
         ;;
@@ -148,7 +231,7 @@ parse_locklist() {
 
     if [ "$_in_locklist" -eq 1 ]; then
       case "$line" in
-        "### "*)
+        "### "*|"## "*)
           # Next section
           break
           ;;
@@ -158,7 +241,7 @@ parse_locklist() {
           ;;
       esac
     fi
-  done < "$_plan"
+  done < "$_file"
 }
 
 # Auto-detect shared files: files that appear in more than one slice
@@ -166,7 +249,7 @@ detect_shared_files() {
   _slices_data="$1"
   _all_files=""
 
-  echo "$_slices_data" | while IFS='|' read -r _s _o _d files; do
+  echo "$_slices_data" | while IFS='|' read -r _s _o _d files _p; do
     echo "$files" | tr ',' '\n' | while IFS= read -r f; do
       _f="$(echo "$f" | tr -d ' ')"
       if [ -n "$_f" ]; then
@@ -240,6 +323,7 @@ remove_worktree() {
 run_slice() {
   _slug="$1"
   _objective="$2"
+  _slice_plan="${3:-}"
   _wt_path="${WORKTREE_BASE}/${_slug}"
   _log_file="${ORCH_STATE}/slice-${_slug}.log"
 
@@ -247,14 +331,24 @@ run_slice() {
 
   if [ "$DRY_RUN" -eq 1 ]; then
     log "[DRY RUN] Would run ralph-pipeline.sh in ${_wt_path}"
+    log "[DRY RUN] Slice plan: ${_slice_plan:-none}"
     echo "complete" > "${ORCH_STATE}/slice-${_slug}.status"
     return 0
+  fi
+
+  # Copy slice plan into the worktree so the agent can read it via relative path
+  _wt_plan_path=""
+  if [ -n "$_slice_plan" ] && [ -f "$_slice_plan" ]; then
+    _wt_plan_dir="${_wt_path}/$(dirname "$_slice_plan")"
+    mkdir -p "$_wt_plan_dir"
+    cp "$_slice_plan" "${_wt_path}/${_slice_plan}"
+    _wt_plan_path="$_slice_plan"
   fi
 
   # Initialize pipeline state in the worktree
   (
     cd "$_wt_path"
-    "${SCRIPT_DIR}/ralph-loop-init.sh" --pipeline general "$_objective" 2>&1 || true
+    "${SCRIPT_DIR}/ralph-loop-init.sh" --pipeline general "$_objective" "$_wt_plan_path" 2>&1 || true
     "${SCRIPT_DIR}/ralph-pipeline.sh" \
       --max-iterations "$MAX_ITERATIONS" \
       2>&1
@@ -401,14 +495,14 @@ main() {
   log "Found ${_slice_count} slice(s)"
 
   if [ "$_slice_count" -eq 0 ]; then
-    log_error "No slices found in plan. Ensure plan has '### Slice N: <name>' sections."
+    log_error "No slices found in plan. Ensure plan has '### Slice N: <name>' sections or is a directory with slice-*.md files."
     exit 1
   fi
 
   log ""
   log "Slices:"
-  echo "$slices_data" | while IFS='|' read -r s o d f; do
-    log "  ${s}: ${o} (deps: ${d:-none})"
+  echo "$slices_data" | while IFS='|' read -r s o d f p; do
+    log "  ${s}: ${o} (deps: ${d:-none}, plan: ${p:-inline})"
   done
   log ""
 
@@ -437,8 +531,8 @@ ORCH_JSON
 
   if [ "$DRY_RUN" -eq 1 ]; then
     log "[DRY RUN] Plan parsed successfully. Would create ${_slice_count} worktree(s)."
-    echo "$slices_data" | while IFS='|' read -r s o d f; do
-      log "[DRY RUN] Slice ${s}: worktree at ${WORKTREE_BASE}/${s}, branch slice/${s}"
+    echo "$slices_data" | while IFS='|' read -r s o d f p; do
+      log "[DRY RUN] Slice ${s}: worktree at ${WORKTREE_BASE}/${s}, branch slice/${s}, plan: ${p:-inline}"
     done
     return 0
   fi
@@ -448,7 +542,7 @@ ORCH_JSON
   echo "$slices_data" > "$_slices_file"
 
   # --- Create worktrees ---
-  while IFS='|' read -r s o d f; do
+  while IFS='|' read -r s o d f p; do
     create_worktree "$s"
   done < "$_slices_file"
 
@@ -463,7 +557,7 @@ ORCH_JSON
 
   while [ "$((_completed + _failed))" -lt "$_total" ]; do
     # Try to start eligible slices
-    while IFS='|' read -r s o d f; do
+    while IFS='|' read -r s o d f p; do
       _s_status="$(check_slice_status "$s")"
 
       # Skip if already started or done
@@ -509,7 +603,7 @@ ORCH_JSON
 
       # Start the slice
       echo "$f" | tr ',' '\n' >> "${ORCH_STATE}/.running_files"
-      run_slice "$s" "$o"
+      run_slice "$s" "$o" "$p"
     done < "$_slices_file"
 
     # Update status counts and rebuild running_files from currently-running slices
@@ -517,7 +611,7 @@ ORCH_JSON
     _failed=0
     _running=0
     : > "${ORCH_STATE}/.running_files"
-    while IFS='|' read -r _rf_s _rf_o _rf_d _rf_f; do
+    while IFS='|' read -r _rf_s _rf_o _rf_d _rf_f _rf_p; do
       _rf_status="$(check_slice_status "$_rf_s")"
       case "$_rf_status" in
         complete)                        _completed=$((_completed + 1)) ;;
