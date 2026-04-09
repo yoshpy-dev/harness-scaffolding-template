@@ -20,6 +20,7 @@ EVIDENCE_DIR="docs/evidence"
 ts() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }
 ts_file() { date -u '+%Y-%m-%d-%H%M%S'; }
 log() { printf '[%s] %s\n' "$(ts)" "$*"; }
+log_error() { printf '[%s] ERROR: %s\n' "$(ts)" "$*" >&2; }
 
 print_usage() {
   cat <<'USAGE'
