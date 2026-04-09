@@ -314,14 +314,61 @@ check_locklist_conflict() {
 }
 
 # ═══════════════════════════════════════════════════════════════════
+# Integration branch management
+# ═══════════════════════════════════════════════════════════════════
+
+INTEGRATION_BRANCH=""
+PLAN_SLUG=""
+
+# Extract slug from plan path for branch naming
+extract_plan_slug() {
+  _path="$1"
+  if [ -d "$_path" ]; then
+    basename "$_path"
+  else
+    basename "$_path" .md
+  fi
+}
+
+# Create an integration branch for unified PR workflow
+create_integration_branch() {
+  _slug="$1"
+  _base="$2"
+  INTEGRATION_BRANCH="integration/${_slug}"
+
+  if git rev-parse --verify "$INTEGRATION_BRANCH" >/dev/null 2>&1; then
+    log "Integration branch already exists: ${INTEGRATION_BRANCH}"
+    return 0
+  fi
+
+  git branch "$INTEGRATION_BRANCH" "$_base" 2>/dev/null || {
+    log_error "Failed to create integration branch: ${INTEGRATION_BRANCH}"
+    return 1
+  }
+  log "Created integration branch: ${INTEGRATION_BRANCH} (from ${_base})"
+}
+
+# ═══════════════════════════════════════════════════════════════════
 # Worktree management
 # ═══════════════════════════════════════════════════════════════════
 
 create_worktree() {
   _slug="$1"
-  _base_branch="$(git rev-parse --abbrev-ref HEAD)"
+  # Use integration branch as base if UNIFIED_PR mode, otherwise current branch
+  if [ "$UNIFIED_PR" -eq 1 ] && [ -n "$INTEGRATION_BRANCH" ]; then
+    _base_branch="$INTEGRATION_BRANCH"
+  else
+    _base_branch="$(git rev-parse --abbrev-ref HEAD)"
+  fi
+
   _wt_path="${WORKTREE_BASE}/${_slug}"
-  _wt_branch="slice/${_slug}"
+
+  # In unified PR mode, use slice/<plan-slug>/<name> branch naming
+  if [ "$UNIFIED_PR" -eq 1 ] && [ -n "$PLAN_SLUG" ]; then
+    _wt_branch="slice/${PLAN_SLUG}/${_slug}"
+  else
+    _wt_branch="slice/${_slug}"
+  fi
 
   if [ -d "$_wt_path" ]; then
     log "Worktree already exists: ${_wt_path}"
@@ -336,7 +383,7 @@ create_worktree() {
       return 1
     }
   }
-  log "Created worktree: ${_wt_path} (branch: ${_wt_branch})"
+  log "Created worktree: ${_wt_path} (branch: ${_wt_branch}, base: ${_base_branch})"
 }
 
 remove_worktree() {
@@ -498,6 +545,122 @@ integration_merge_check() {
   return 0
 }
 
+# Sequential merge of completed slice branches into the integration branch.
+# Merges slices in file-order (which matches dependency order from parse_slices).
+# Aborts on first conflict.
+integration_merge() {
+  _int_branch="$1"
+  _slices_file="$2"
+  _conflicts=0
+  _merged=0
+
+  log "Running sequential merge into ${_int_branch}..."
+
+  # Save current branch to return to later
+  _orig_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  git checkout "$_int_branch" 2>/dev/null || {
+    log_error "Failed to checkout integration branch: ${_int_branch}"
+    return 1
+  }
+
+  # Merge each completed slice in order
+  while IFS='|' read -r s _o _d _f _p; do
+    _status_file="${ORCH_STATE}/slice-${s}.status"
+    [ -f "$_status_file" ] || continue
+    _status="$(cat "$_status_file")"
+    if [ "$_status" != "complete" ]; then
+      log "Skipping slice ${s} (status: ${_status})"
+      continue
+    fi
+
+    # Determine the slice branch name
+    if [ -n "$PLAN_SLUG" ]; then
+      _slice_branch="slice/${PLAN_SLUG}/${s}"
+    else
+      _slice_branch="slice/${s}"
+    fi
+
+    log "Merging ${_slice_branch} into ${_int_branch}..."
+    if ! git merge --no-ff "$_slice_branch" -m "$(cat <<MERGE_EOF
+chore: merge ${_slice_branch} into ${_int_branch}
+MERGE_EOF
+)" 2>/dev/null; then
+      log_error "CONFLICT merging ${_slice_branch} into ${_int_branch}"
+      git merge --abort 2>/dev/null || true
+      _conflicts=$((_conflicts + 1))
+      # Return to original branch before reporting error
+      git checkout "$_orig_branch" 2>/dev/null || true
+      log_error "Sequential merge aborted at slice ${s}. ${_merged} slice(s) merged before conflict."
+      return 1
+    fi
+    _merged=$((_merged + 1))
+    log "Merged ${_slice_branch} (${_merged} total)"
+  done < "$_slices_file"
+
+  # Return to original branch
+  git checkout "$_orig_branch" 2>/dev/null || true
+
+  log "Sequential merge complete: ${_merged} slice(s) merged into ${_int_branch}"
+  return 0
+}
+
+# Create a unified PR from the integration branch to the base branch
+create_unified_pr() {
+  _int_branch="$1"
+  _base_branch="$2"
+  _plan_slug="$3"
+  _total_slices="$4"
+  _completed="$5"
+
+  log "Creating unified PR: ${_int_branch} → ${_base_branch}..."
+
+  # Push integration branch
+  git push -u origin "$_int_branch" 2>/dev/null || {
+    log_error "Failed to push integration branch"
+    return 1
+  }
+
+  # Create PR
+  _pr_url="$(gh pr create \
+    --base "$_base_branch" \
+    --head "$_int_branch" \
+    --title "feat: ${_plan_slug}" \
+    --body "$(cat <<PR_EOF
+## Summary
+
+Unified PR for Ralph Loop parallel slices: ${_plan_slug}
+
+- Total slices: ${_total_slices}
+- Completed: ${_completed}
+- Integration branch: ${_int_branch}
+
+## Slice branches merged
+
+$(for sf in "${ORCH_STATE}"/slice-*.status; do
+  [ -f "$sf" ] || continue
+  _name="$(basename "$sf" | sed 's/^slice-//;s/\.status$//')"
+  _ss="$(cat "$sf")"
+  printf '- %s: %s\n' "$_name" "$_ss"
+done)
+
+## Test plan
+
+- [ ] All slice pipelines passed (self-review, verify, test)
+- [ ] Integration merge passed without conflicts
+- [ ] CI checks pass on this PR
+
+Generated by Ralph Orchestrator
+PR_EOF
+)" 2>&1)" || {
+    log_error "Failed to create unified PR"
+    return 1
+  }
+
+  log "Unified PR created: ${_pr_url}"
+  echo "$_pr_url"
+}
+
 # ═══════════════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════════════
@@ -510,6 +673,16 @@ main() {
   log "Unified PR: ${UNIFIED_PR}"
   log "Dry run: ${DRY_RUN}"
   log ""
+
+  # --- Extract plan slug and set up integration branch ---
+  PLAN_SLUG="$(extract_plan_slug "$PLAN_FILE")"
+  _base_branch="$(git rev-parse --abbrev-ref HEAD)"
+
+  if [ "$UNIFIED_PR" -eq 1 ]; then
+    create_integration_branch "$PLAN_SLUG" "$_base_branch"
+    log "Integration branch: ${INTEGRATION_BRANCH}"
+    log ""
+  fi
 
   # --- Parse plan ---
   slices_data="$(parse_slices "$PLAN_FILE")"
@@ -565,8 +738,16 @@ ORCH_JSON
 
   if [ "$DRY_RUN" -eq 1 ]; then
     log "[DRY RUN] Plan parsed successfully. Would create ${_slice_count} worktree(s)."
+    if [ "$UNIFIED_PR" -eq 1 ]; then
+      log "[DRY RUN] Integration branch: ${INTEGRATION_BRANCH}"
+    fi
     echo "$slices_data" | while IFS='|' read -r s o d f p; do
-      log "[DRY RUN] Slice ${s}: worktree at ${WORKTREE_BASE}/${s}, branch slice/${s}, plan: ${p:-inline}"
+      if [ "$UNIFIED_PR" -eq 1 ] && [ -n "$PLAN_SLUG" ]; then
+        _br="slice/${PLAN_SLUG}/${s}"
+      else
+        _br="slice/${s}"
+      fi
+      log "[DRY RUN] Slice ${s}: worktree at ${WORKTREE_BASE}/${s}, branch ${_br}, plan: ${p:-inline}"
     done
     return 0
   fi
@@ -671,30 +852,53 @@ ORCH_JSON
   log "Completed: ${_completed}/${_total}"
   log "Failed: ${_failed}/${_total}"
 
-  # --- Integration merge check ---
+  # --- Integration merge ---
+  _merge_status="skipped"
+  _pr_url=""
+
   if [ "$_completed" -gt 0 ] && [ "$_failed" -eq 0 ]; then
-    if integration_merge_check; then
-      log "All slices complete with no merge conflicts."
+    if [ "$UNIFIED_PR" -eq 1 ] && [ -n "$INTEGRATION_BRANCH" ]; then
+      # Unified PR mode: sequential merge into integration branch, then create PR
+      if integration_merge "$INTEGRATION_BRANCH" "$_slices_file"; then
+        _merge_status="clean"
+        log "Sequential merge to ${INTEGRATION_BRANCH} passed."
+        # Create unified PR
+        _pr_url="$(create_unified_pr "$INTEGRATION_BRANCH" "$_base_branch" "$PLAN_SLUG" "$_total" "$_completed")" || {
+          log_error "Unified PR creation failed."
+          _pr_url=""
+        }
+      else
+        _merge_status="conflict"
+        log_error "Sequential merge failed. Manual resolution needed on ${INTEGRATION_BRANCH}."
+      fi
     else
-      log_error "Merge conflicts detected. Manual resolution needed."
-      _merge_status="conflict"
+      # Legacy mode: dry merge check only
+      if integration_merge_check; then
+        _merge_status="clean"
+        log "All slices complete with no merge conflicts."
+      else
+        _merge_status="conflict"
+        log_error "Merge conflicts detected. Manual resolution needed."
+      fi
     fi
   fi
 
   # --- Generate execution report ---
   _report_file="${EVIDENCE_DIR}/orchestrator-$(ts_file).json"
-  _merge_status="${_merge_status:-clean}"
 
   cat > "$_report_file" <<REPORT_JSON
 {
   "plan": "${PLAN_FILE}",
+  "plan_slug": "${PLAN_SLUG}",
   "started": "${_started}",
   "ended": "$(ts)",
   "total_slices": ${_total},
   "completed": ${_completed},
   "failed": ${_failed},
   "merge_status": "${_merge_status}",
-  "unified_pr": $([ "$UNIFIED_PR" -eq 1 ] && echo true || echo false)
+  "unified_pr": $([ "$UNIFIED_PR" -eq 1 ] && echo true || echo false),
+  "integration_branch": "$([ "$UNIFIED_PR" -eq 1 ] && echo "${INTEGRATION_BRANCH}" || echo "")",
+  "pr_url": "${_pr_url}"
 }
 REPORT_JSON
 
@@ -702,7 +906,8 @@ REPORT_JSON
 
   # Update orchestrator status
   jq --arg s "$([ "$_failed" -gt 0 ] && echo "partial" || echo "complete")" \
-    '.status = $s | .ended = "'"$(ts)"'"' \
+    --arg pr "${_pr_url}" \
+    '.status = $s | .ended = "'"$(ts)"'" | .pr_url = $pr' \
     "${ORCH_STATE}/orchestrator.json" > "${ORCH_STATE}/orchestrator.tmp.json" \
     && mv "${ORCH_STATE}/orchestrator.tmp.json" "${ORCH_STATE}/orchestrator.json"
 
