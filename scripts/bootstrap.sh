@@ -62,8 +62,5 @@ fi
 echo
 echo "Bootstrap complete."
 echo
-echo "Next steps:"
-echo "  1. Edit AGENTS.md and CLAUDE.md for your project"
-echo "  2. Customize .claude/rules/ and packs/languages/ as needed"
-echo "  3. Create a plan: ./scripts/new-feature-plan.sh <slug>"
-echo "  4. Personal overrides (extra permissions, etc): create .claude/settings.local.json (gitignored)"
+echo "Tip: For first-time setup from the template, run ./scripts/init-project.sh instead."
+echo "     It cleans template artifacts and then runs this bootstrap automatically."

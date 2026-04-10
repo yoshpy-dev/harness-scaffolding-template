@@ -21,3 +21,7 @@ __pycache__/
 
 # Auto-generated verification evidence (run-verify.sh output)
 docs/evidence/*.log
+docs/evidence/*.json
+
+# Auto-generated pipeline execution logs
+docs/reports/pipeline-execution-*.json

@@ -50,16 +50,15 @@ The default philosophy here is:
 │   └── references/
 ├── packs/
 │   └── languages/
-├── scripts/
-└── examples/
+└── scripts/
 ```
 
 ## Quick start
 
-1. Bootstrap local runtime folders.
+1. Initialize the project (cleans template artifacts, bootstraps hooks and directories).
 
    ```sh
-   ./scripts/bootstrap.sh
+   ./scripts/init-project.sh
    ```
 
 2. Edit these files first:
@@ -154,6 +153,8 @@ Included starter packs:
 - `typescript/`
 - `python/`
 - `rust/`
+- `go/`
+- `dart/` (Flutter support included)
 - `_template/` for new packs
 
 Add a new pack with:

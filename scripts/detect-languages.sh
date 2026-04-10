@@ -30,6 +30,10 @@ if [ -f go.mod ]; then
   emit go
 fi
 
+if [ -f pubspec.yaml ] || find . -type f -name '*.dart' | grep -q .; then
+  emit dart
+fi
+
 if [ -f pom.xml ] || [ -f build.gradle ] || [ -f build.gradle.kts ]; then
   emit jvm
 fi
