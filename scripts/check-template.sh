@@ -19,6 +19,7 @@ docs/roadmap/harness-maturity-model.md
 scripts/run-verify.sh
 scripts/archive-plan.sh
 scripts/new-ralph-plan.sh
+scripts/commit-msg-guard.sh
 "
 
 for file in $required_files; do
@@ -57,6 +58,15 @@ if [ -f .claude/settings.json ]; then
       fail "Settings file .claude/settings.json references missing hook: $hook_path"
     fi
   done
+fi
+
+# --- commit-msg hook installation check ---
+if [ -d .git ]; then
+  if [ ! -f .git/hooks/commit-msg ]; then
+    fail "commit-msg hook not installed. Run: ./scripts/bootstrap.sh"
+  elif ! grep -q 'commit-msg-guard' .git/hooks/commit-msg 2>/dev/null; then
+    fail "commit-msg hook exists but is not our guard. Run: ./scripts/bootstrap.sh"
+  fi
 fi
 
 if [ "$status" -eq 0 ]; then

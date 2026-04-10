@@ -26,3 +26,9 @@ jobs:
           echo "All shell scripts passed syntax check"
       - name: Run verification
         run: ./scripts/run-verify.sh
+      - name: Check test coverage
+        run: ./scripts/check-coverage.sh
+        env:
+          COVERAGE_THRESHOLD: "80"
+      - name: Check pipeline order sync
+        run: ./scripts/check-pipeline-sync.sh
