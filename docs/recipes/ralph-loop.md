@@ -198,13 +198,15 @@ Each slice in the Ralph Loop runs a full Inner/Outer Loop pipeline autonomously:
 
 ```
 Inner Loop (per cycle):
-  implement → self-review → verify → test
+  implement (claude -p) → self-review (claude -p) → verify (claude -p) → test (claude -p)
   → if tests fail: retry (up to --max-inner-cycles)
 
 Outer Loop (after tests pass):
-  sync-docs → codex-review → PR
+  sync-docs (claude -p) → codex-review → PR (claude -p)
   → if codex ACTION_REQUIRED: regress to Inner Loop
 ```
+
+Each post-implementation agent (self-review, verify, test) runs as a dedicated `claude -p` invocation with a single-responsibility prompt. Agents execute scripts internally (e.g., `run-static-verify.sh`, `run-test.sh`) and produce structured analysis — not just exit codes. Reports are dual-written to `.harness/state/pipeline/` and `docs/reports/`, with machine-readable sidecar signal files for pass/fail detection.
 
 ### When to use Ralph Loop
 

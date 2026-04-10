@@ -51,9 +51,13 @@ When running in pipeline mode, the orchestrator enforces its own gates autonomou
 | Preflight probe | `--preflight` checks claude CLI, jq, CLAUDE.md, git | Pipeline blocked |
 | Hook parity check | `run_hook_parity()` emulates hook safety checks | Warning logged |
 | Stuck detection | HEAD commit hash comparison (3 consecutive no-change) | Pipeline aborted |
-| Test pass | `run-test.sh` or `run-verify.sh HARNESS_VERIFY_MODE=test` | Retry Inner Loop |
+| Self-review | `claude -p` with `pipeline-self-review.md` (agent-driven, 10-item checklist) | CRITICAL findings logged |
+| Verify | `claude -p` with `pipeline-verify.md` (agent-driven, runs `run-static-verify.sh` internally) | Verdict logged |
+| Test | `claude -p` with `pipeline-test.md` (agent-driven, runs `run-test.sh` internally + root cause analysis) | Retry Inner Loop |
 | COMPLETE gating | Tests pass + COMPLETE signal required to advance; tests pass without COMPLETE → continue Inner Loop (return 6) | Inner Loop continues |
 | Repair attempt limit | `MAX_REPAIR_ATTEMPTS` (default 5) | Escalate to human |
+
+Each agent writes reports to both `.harness/state/pipeline/` (orchestrator) and `docs/reports/` (PR pre-checks), plus a sidecar signal file for machine-readable pass/fail detection.
 
 ### Outer Loop gates
 
@@ -61,7 +65,7 @@ When running in pipeline mode, the orchestrator enforces its own gates autonomou
 |------|-----------|------------|
 | Codex ACTION_REQUIRED | Codex triage finds actionable issues | Regress to Inner Loop |
 | Iteration limit | `MAX_ITERATIONS` (default 20) | Pipeline stopped |
-| Inner cycle limit | `MAX_INNER_CYCLES` (default 5) | Move to Outer Loop |
+| Inner cycle limit | `MAX_INNER_CYCLES` (default 10) | Move to Outer Loop |
 
 ### Pipeline state
 

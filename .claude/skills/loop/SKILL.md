@@ -107,8 +107,10 @@ When presenting AskUserQuestion choices, always pre-select or recommend the most
 
 ### Pipeline prompts
 - [prompts/pipeline-inner.md](prompts/pipeline-inner.md) — Implementation agent
-- [prompts/pipeline-review.md](prompts/pipeline-review.md) — Self-review + verify + test agent
-- [prompts/pipeline-outer.md](prompts/pipeline-outer.md) — Sync-docs + codex-review + PR agent
+- [prompts/pipeline-self-review.md](prompts/pipeline-self-review.md) — Self-review agent (diff quality, 10-item checklist)
+- [prompts/pipeline-verify.md](prompts/pipeline-verify.md) — Verify agent (spec compliance + static analysis + doc drift)
+- [prompts/pipeline-test.md](prompts/pipeline-test.md) — Test agent (behavioral tests + root cause analysis)
+- [prompts/pipeline-outer.md](prompts/pipeline-outer.md) — Sync-docs agent (product-level + harness-internal sync)
 
 ### Scripts
 - `scripts/ralph-orchestrator.sh` — Multi-worktree parallel orchestrator

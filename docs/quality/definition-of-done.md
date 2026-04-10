@@ -37,6 +37,8 @@ If `/codex-review` finds ACTION_REQUIRED issues and the user chooses to fix them
 
 Ralph Loop handles the full lifecycle autonomously per slice (implement → self-review → verify → test → sync-docs → codex-review) then merges and creates a unified PR.
 
+**Pipeline report output:** Each pipeline agent (self-review, verify, test) writes reports to both `.harness/state/pipeline/` (for orchestrator consumption) and `docs/reports/` (for PR pre-checks and human review). This dual-write ensures pipeline artifacts are available for the same quality checks as the standard flow.
+
 ## For risky or broad changes
 
 Add:

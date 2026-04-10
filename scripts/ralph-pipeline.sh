@@ -352,6 +352,7 @@ run_inner_loop() {
 
   # --- Clear stale sidecar files at cycle start ---
   rm -f "${PIPELINE_DIR}/.agent-signal" "${PIPELINE_DIR}/.pr-url"
+  rm -f "${PIPELINE_DIR}/.self-review-result" "${PIPELINE_DIR}/.verify-result" "${PIPELINE_DIR}/.test-result"
 
   # --- Implementation phase ---
   log "--- Phase: implement ---"
@@ -469,15 +470,15 @@ run_inner_loop() {
     return 3
   fi
 
-  # --- Self-review phase ---
+  # --- Self-review phase (agent-driven) ---
   log "--- Phase: self-review ---"
   _review_log="${PIPELINE_DIR}/inner-${_cycle}-self-review.log"
   _review_prompt="${PIPELINE_DIR}/.review-prompt.md"
 
-  if [ -f "${PIPELINE_DIR}/pipeline-review.md" ]; then
-    cp "${PIPELINE_DIR}/pipeline-review.md" "$_review_prompt"
-  elif [ -f ".claude/skills/loop/prompts/pipeline-review.md" ]; then
-    cp ".claude/skills/loop/prompts/pipeline-review.md" "$_review_prompt"
+  if [ -f "${PIPELINE_DIR}/pipeline-self-review.md" ]; then
+    cp "${PIPELINE_DIR}/pipeline-self-review.md" "$_review_prompt"
+  elif [ -f ".claude/skills/loop/prompts/pipeline-self-review.md" ]; then
+    cp ".claude/skills/loop/prompts/pipeline-self-review.md" "$_review_prompt"
   else
     cat > "$_review_prompt" <<'REVIEW'
 Review the current git diff for code quality issues. Focus on:
@@ -487,50 +488,100 @@ Review the current git diff for code quality issues. Focus on:
 4. Security concerns
 5. Debug code left behind
 
-Write findings to .harness/state/pipeline/ following the self-review template.
+Write findings to .harness/state/pipeline/self-review.md following the self-review template.
 If there are CRITICAL findings, clearly state them.
+Write a sidecar: echo '{"critical":0,"high":0,"medium":0,"low":0}' > .harness/state/pipeline/.self-review-result
 REVIEW
   fi
 
   run_claude "$_review_prompt" "$_review_log" ""
   report_event "self-review" "{\"cycle\":${_cycle},\"log\":\"${_review_log}\"}"
 
-  # Check for CRITICAL findings (simple heuristic)
-  if grep -qi 'CRITICAL' "$_review_log" 2>/dev/null; then
-    _critical_count="$(grep -ci 'CRITICAL' "$_review_log" 2>/dev/null || echo 0)"
-    log "Warning: ${_critical_count} CRITICAL finding(s) detected in self-review"
-    # Don't stop — let verify and test catch real issues
+  # Check for CRITICAL findings (3-layer detection)
+  # Layer 1: sidecar file
+  _sr_critical=0
+  if [ -f "${PIPELINE_DIR}/.self-review-result" ]; then
+    _sr_critical="$(jq -r '.critical // 0' "${PIPELINE_DIR}/.self-review-result" 2>/dev/null || echo 0)"
   fi
+  # Layer 2: JSON output parse
+  if [ "$_sr_critical" -eq 0 ] && [ -f "${_review_log}.json" ] && [ -s "${_review_log}.json" ]; then
+    _sr_critical="$(jq -r '.result // empty' "${_review_log}.json" 2>/dev/null | jq -r '.self_review.critical // 0' 2>/dev/null || echo 0)"
+  fi
+  # Layer 3: grep fallback
+  if [ "$_sr_critical" -eq 0 ] && grep -qi 'CRITICAL' "$_review_log" 2>/dev/null; then
+    _sr_critical="$(grep -ci 'CRITICAL' "$_review_log" 2>/dev/null || echo 0)"
+  fi
+  if [ "$_sr_critical" -gt 0 ]; then
+    log "Warning: ${_sr_critical} CRITICAL finding(s) detected in self-review"
+  fi
+  ckpt_update ".self_review_result = {\"critical\":${_sr_critical}}"
 
-  # --- Verify phase ---
+  # --- Verify phase (agent-driven) ---
   log "--- Phase: verify ---"
   _verify_log="${PIPELINE_DIR}/inner-${_cycle}-verify.log"
-  if [ "$DRY_RUN" -eq 1 ]; then
-    echo "[dry-run] Would run: ./scripts/run-static-verify.sh" > "$_verify_log"
-  elif [ -x ./scripts/run-static-verify.sh ]; then
-    ./scripts/run-static-verify.sh 2>&1 | tee "$_verify_log" || true
-  elif [ -x ./scripts/run-verify.sh ]; then
-    HARNESS_VERIFY_MODE=static ./scripts/run-verify.sh 2>&1 | tee "$_verify_log" || true
+  _verify_prompt="${PIPELINE_DIR}/.verify-prompt.md"
+
+  if [ -f "${PIPELINE_DIR}/pipeline-verify.md" ]; then
+    cp "${PIPELINE_DIR}/pipeline-verify.md" "$_verify_prompt"
+  elif [ -f ".claude/skills/loop/prompts/pipeline-verify.md" ]; then
+    cp ".claude/skills/loop/prompts/pipeline-verify.md" "$_verify_prompt"
+  else
+    cat > "$_verify_prompt" <<'VERIFY'
+Verify the current work against the plan's acceptance criteria and run static analysis.
+Run: ./scripts/run-static-verify.sh
+Write results to .harness/state/pipeline/verify.md
+Write a sidecar: echo '{"verdict":"pass","ac_met":0,"ac_total":0}' > .harness/state/pipeline/.verify-result
+VERIFY
   fi
+
+  run_claude "$_verify_prompt" "$_verify_log" ""
   report_event "verify" "{\"cycle\":${_cycle},\"log\":\"${_verify_log}\"}"
 
-  # --- Test phase ---
+  # Parse verify verdict (3-layer detection)
+  _verify_verdict="pass"
+  if [ -f "${PIPELINE_DIR}/.verify-result" ]; then
+    _verify_verdict="$(jq -r '.verdict // "pass"' "${PIPELINE_DIR}/.verify-result" 2>/dev/null || echo 'pass')"
+  elif [ -f "${_verify_log}.json" ] && [ -s "${_verify_log}.json" ]; then
+    _verify_verdict="$(jq -r '.result // empty' "${_verify_log}.json" 2>/dev/null | jq -r '.verify // "pass"' 2>/dev/null || echo 'pass')"
+  fi
+  if [ "$_verify_verdict" = "fail" ]; then
+    log "Warning: verify verdict is FAIL"
+  fi
+  ckpt_update --arg v "$_verify_verdict" '.verify_result = $v'
+
+  # --- Test phase (agent-driven) ---
   log "--- Phase: test ---"
   _test_log="${PIPELINE_DIR}/inner-${_cycle}-test.log"
+  _test_prompt="${PIPELINE_DIR}/.test-prompt.md"
   _test_exit=0
-  if [ "$DRY_RUN" -eq 1 ]; then
-    echo "[dry-run] Would run: ./scripts/run-test.sh" > "$_test_log"
-  elif [ -x ./scripts/run-test.sh ]; then
-    if ! ./scripts/run-test.sh 2>&1 | tee "$_test_log"; then
-      _test_exit=1
-    fi
-  elif [ -x ./scripts/run-verify.sh ]; then
-    if ! HARNESS_VERIFY_MODE=test ./scripts/run-verify.sh 2>&1 | tee "$_test_log"; then
-      _test_exit=1
-    fi
+
+  if [ -f "${PIPELINE_DIR}/pipeline-test.md" ]; then
+    cp "${PIPELINE_DIR}/pipeline-test.md" "$_test_prompt"
+  elif [ -f ".claude/skills/loop/prompts/pipeline-test.md" ]; then
+    cp ".claude/skills/loop/prompts/pipeline-test.md" "$_test_prompt"
   else
-    log "No test runner found — skipping test phase"
-    echo "no_test_runner" > "$_test_log"
+    cat > "$_test_prompt" <<'TESTPROMPT'
+Run behavioral tests and produce a test report.
+Run: ./scripts/run-test.sh
+Write results to .harness/state/pipeline/test.md
+Write a sidecar: echo '{"verdict":"pass","total":0,"passed":0,"failed":0}' > .harness/state/pipeline/.test-result
+TESTPROMPT
+  fi
+
+  run_claude "$_test_prompt" "$_test_log" ""
+
+  # Parse test verdict (3-layer detection)
+  _test_verdict="pass"
+  if [ -f "${PIPELINE_DIR}/.test-result" ]; then
+    _test_verdict="$(jq -r '.verdict // "pass"' "${PIPELINE_DIR}/.test-result" 2>/dev/null || echo 'pass')"
+  elif [ -f "${_test_log}.json" ] && [ -s "${_test_log}.json" ]; then
+    _test_verdict="$(jq -r '.result // empty' "${_test_log}.json" 2>/dev/null | jq -r '.test // "pass"' 2>/dev/null || echo 'pass')"
+  elif grep -qi 'fail' "$_test_log" 2>/dev/null && ! grep -qi 'no.test.runner\|0 failed' "$_test_log" 2>/dev/null; then
+    _test_verdict="fail"
+  fi
+
+  if [ "$_test_verdict" = "fail" ]; then
+    _test_exit=1
   fi
 
   report_event "test" "{\"cycle\":${_cycle},\"exit_code\":${_test_exit},\"log\":\"${_test_log}\"}"
@@ -760,6 +811,8 @@ main() {
   "last_test_result": null,
   "test_failures": [],
   "failure_triage": [],
+  "self_review_result": null,
+  "verify_result": null,
   "review_findings": [],
   "codex_triage": {"action_required": 0, "worth_considering": 0, "dismissed": 0},
   "acceptance_criteria_met": [],
@@ -884,6 +937,14 @@ _finalize() {
   log "  Iterations: $(ckpt_read 'iteration')"
   log "  Inner cycles: $(ckpt_read 'inner_cycle')"
   log "  Outer cycles: $(ckpt_read 'outer_cycle')"
+  _sr="$(ckpt_read 'self_review_result' || true)"
+  if [ -n "$_sr" ] && [ "$_sr" != "null" ]; then
+    log "  Self-review: ${_sr}"
+  fi
+  _vr="$(ckpt_read 'verify_result' || true)"
+  if [ -n "$_vr" ] && [ "$_vr" != "null" ]; then
+    log "  Verify: ${_vr}"
+  fi
   log "  Checkpoint: ${PIPELINE_DIR}/checkpoint.json"
   log "  Report: ${_report_file}"
   if [ "$(ckpt_read 'pr_created')" = "true" ]; then

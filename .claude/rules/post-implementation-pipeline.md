@@ -10,6 +10,8 @@ Single source of truth for the post-implementation pipeline. All flows (standard
 
 No step may be skipped. If any step triggers a fix-and-revalidate cycle (e.g., Codex ACTION_REQUIRED), the **full pipeline** re-runs from `/self-review` onwards.
 
+**Pipeline parity:** In Ralph Loop (`ralph-pipeline.sh`), each post-implementation step runs as a dedicated `claude -p` agent with a single-responsibility prompt (not shell-direct execution). This ensures the same depth of analysis as standard-flow subagents: structured reports with findings tables, root cause analysis, spec compliance checks, and documentation drift detection. Reports are dual-written to both `.harness/state/pipeline/` and `docs/reports/`.
+
 ## Step responsibilities
 
 | Step | Agent | Purpose | Stop condition |
