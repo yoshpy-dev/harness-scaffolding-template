@@ -1,6 +1,6 @@
 # Subagent Delegation Policy
 
-Single source of truth for when to delegate work to subagents.
+When and how to delegate work to subagents. Pipeline order is defined in `post-implementation-pipeline.md`.
 
 ## Post-implementation pipeline for /work — delegate via subagents
 
@@ -45,39 +45,12 @@ If a subagent fails to execute (tool error, not a review finding), run the corre
 
 The triage step reads existing artifacts (plan, self-review report, verify report) and produces `docs/reports/codex-triage-<slug>.md`. No new subagent definition is needed.
 
-## Documentation sync for /work — delegate
-
-In the `/work` flow, after tests pass and before PR creation, run `/sync-docs` via the `doc-maintainer` subagent:
-
-```
-Task(subagent_type="doc-maintainer", prompt="Run /sync-docs after <slug> implementation")
-  → doc-maintainer updates docs, rules, and reports as needed
-```
-
-This runs after the test step and before `/pr`, producing documentation updates as a separate concern from implementation.
-
 ## Post-implementation pipeline for /loop — orchestrator-internal
 
-When running Ralph Loop (`ralph-orchestrator.sh`), each slice gets its own worktree and runs `ralph-pipeline.sh` independently. Each pipeline invokes phases (implement, self-review, verify, test, sync-docs, codex-review, PR) as separate `claude -p` calls with dedicated prompts. No subagent delegation is needed from the main context.
+Ralph Loop uses `ralph-pipeline.sh` per slice (not subagents). Same pipeline order as `/work` (see `post-implementation-pipeline.md`), but executed via `claude -p` calls with dedicated prompts.
 
-The pipeline order is identical to `/work` (`/self-review` → `/verify` → `/test` → `/sync-docs` → `/codex-review` → `/pr`), but execution differs:
+Execution model difference:
 - `/work`: subagent Task calls in Claude Code session
 - `/loop`: `claude -p` invocations orchestrated by `ralph-pipeline.sh`
 
-The orchestrator:
-1. Creates an integration branch (`integration/<slug>`)
-2. Bases each slice worktree on the integration branch
-3. Sequentially merges completed slices into the integration branch (dependency order)
-4. Creates a unified PR from the integration branch to the base branch (with `--unified-pr`)
-
-Plan input is directory-based only: `docs/plans/active/<date>-<slug>/` with `_manifest.md` + `slice-*.md`.
-
 When a user returns after a Ralph Loop run, check `./scripts/ralph status` for the final outcome rather than running the subagent chain.
-
-## Rationale
-
-- Post-implementation steps produce independent artifacts with clear boundaries — ideal for subagent isolation in `/work`.
-- Subagent execution preserves main context tokens for implementation work.
-- Sequential execution ensures each step can react to prior findings.
-- Ralph Loop internalizes the same pipeline into `claude -p` calls with dedicated prompts, achieving quality parity without subagent delegation.
-- Both flows produce reports in `docs/reports/` — the output format is identical regardless of execution model.

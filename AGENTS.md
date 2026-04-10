@@ -26,11 +26,12 @@ Build coding-agent workflows that are:
 4. Self-review (auto — via `reviewer` subagent, or pipeline-internal)
 5. Verify (auto — via `verifier` subagent, or pipeline-internal)
 6. Test (auto — via `tester` subagent, or pipeline-internal)
-7. Codex review (auto, optional — cross-model second opinion)
-8. PR (auto — includes hand-off)
-9. CI verify + human merge
+7. Sync docs (auto — via `doc-maintainer` subagent, or pipeline-internal)
+8. Codex review (auto, optional — cross-model second opinion)
+9. PR (auto — includes hand-off)
+10. CI verify + human merge
 
-Steps 4–8 run via subagents in 標準フロー. In Ralph Loop, they are handled internally by the pipeline scripts.
+Steps 4–9 run via subagents in 標準フロー. In Ralph Loop, they are handled internally by the pipeline scripts.
 
 ## Source of truth
 
@@ -76,28 +77,11 @@ Reviews should produce artifacts, not only chat output:
 - follow-ups
 - known gaps
 
-## Verification contract
+## Verification & test contracts
 
-Prefer this order:
-1. spec compliance check against acceptance criteria
-2. linters and type checks (static analysis)
-3. documentation drift check
-4. targeted runtime commands
-5. screenshots, logs, traces, or metrics
-6. structured manual walkthrough
+See `docs/quality/definition-of-done.md` for full checklists.
 
-Never say "done" without saying what was verified and what remains unverified.
-
-## Test contract
-
-Tests should produce artifacts:
-- test execution results with pass/fail counts
-- coverage metrics
-- failure analysis with root causes
-- regression check results
-- explicit test gaps
-
-Tests must pass before PR creation.
+Key rule: never say "done" without saying what was verified and what remains unverified. Tests must pass before PR creation.
 
 ## Hard rules
 

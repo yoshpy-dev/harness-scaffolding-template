@@ -24,7 +24,7 @@ Each iteration must commit its changes before finishing:
 4. Append summary to `progress.log`
 5. Do NOT leave uncommitted changes between iterations
 
-In Ralph Loop (`ralph-pipeline.sh` per slice), the implementation agent (Inner Loop) is responsible for committing each step. The `check_uncommitted` utility warns if uncommitted changes remain after an iteration. Documentation changes from the Outer Loop (sync-docs) are committed by the pipeline-outer agent before PR creation.
+In Ralph Loop (`ralph-pipeline.sh` per slice), the implementation agent (Inner Loop) is responsible for committing each step. The pipeline detects uncommitted changes via `git diff-index --quiet HEAD` after each iteration and warns if any remain. Documentation changes from the Outer Loop (sync-docs) are committed by the pipeline-outer agent before PR creation.
 
 ## End-of-Session / Pre-Compaction WIP Commits
 
