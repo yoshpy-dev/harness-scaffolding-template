@@ -31,7 +31,7 @@ Usage: ralph <command> [options]
 Commands:
   plan                       Start a planning session
   run [options]              Execute the orchestrator (parallel slices)
-  status                     Show current pipeline progress
+  status [options]           Show current pipeline progress
   abort [--slice <name>]     Safely stop and clean up
 
 Run Options:
@@ -47,11 +47,19 @@ Abort Options:
   --slice <name>             Abort a specific slice only
   --keep-state               Archive state but don't delete worktrees
 
+Status Options:
+  --json                     Output machine-readable JSON
+  --watch                    Auto-refresh display (Ctrl+C to stop)
+  --interval N               Refresh interval in seconds (default: 5, requires --watch)
+  --no-color                 Disable ANSI color codes
+
 Examples:
   ralph plan
   ralph run --plan docs/plans/active/2026-01-01-my-feature/ --unified-pr
   ralph run --dry-run
   ralph status
+  ralph status --json
+  ralph status --watch --interval 3
   ralph abort
 USAGE
 }
@@ -123,43 +131,47 @@ cmd_run() {
 # ═══════════════════════════════════════════════════════════════════
 
 cmd_status() {
-  echo "═══ Ralph Pipeline Status ═══"
-  echo ""
+  _json_mode=0
+  _watch_mode=0
+  _watch_interval=5
+  STATUS_NO_COLOR=0
 
-  # Orchestrator status
-  if [ -f "${ORCH_STATE}/orchestrator.json" ]; then
-    echo "Orchestrator (multi-worktree):"
-    _orch_status="$(jq -r '.status // "unknown"' "${ORCH_STATE}/orchestrator.json" 2>/dev/null || echo "?")"
-    _orch_plan="$(jq -r '.plan // "unknown"' "${ORCH_STATE}/orchestrator.json" 2>/dev/null || echo "?")"
-    printf "  Plan:   %s\n" "$_orch_plan"
-    printf "  Status: %s\n" "$_orch_status"
-    echo ""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json)      _json_mode=1 ;;
+      --watch)     _watch_mode=1 ;;
+      --interval)  shift; _watch_interval="${1:?requires a number}" ;;
+      --no-color)  STATUS_NO_COLOR=1 ;;
+      *)           echo "Unknown status option: $1"; exit 1 ;;
+    esac
+    shift
+  done
 
-    echo "  Slices:"
-    for sf in "${ORCH_STATE}"/slice-*.status; do
-      [ -f "$sf" ] || continue
-      _name="$(basename "$sf" | sed 's/^slice-//;s/\.status$//')"
-      _ss="$(cat "$sf")"
-      printf "    %-30s %s\n" "$_name" "$_ss"
+  export STATUS_NO_COLOR
+
+  # Source helpers
+  . "${SCRIPT_DIR}/ralph-status-helpers.sh"
+  detect_color
+
+  if [ "$_watch_mode" -eq 1 ]; then
+    # Watch mode: clear + render in a loop, trap SIGINT for clean exit
+    trap 'printf "\n"; exit 0' INT
+    while true; do
+      clear
+      if [ "$_json_mode" -eq 1 ]; then
+        _render_json "$ORCH_STATE" "$WORKTREE_BASE"
+      else
+        _render_table "$ORCH_STATE" "$WORKTREE_BASE"
+        printf '\n%bAuto-refresh every %ds. Press Ctrl+C to stop.%b\n' "$C_DIM" "$_watch_interval" "$C_RESET"
+      fi
+      sleep "$_watch_interval"
     done
-    echo ""
-  fi
-
-  # Worktrees
-  _wt_count=0
-  _wt_count="$(git worktree list 2>/dev/null | grep -c "${WORKTREE_BASE}" 2>/dev/null)" || _wt_count=0
-  if [ "$_wt_count" -gt 0 ]; then
-    echo "Active worktrees:"
-    git worktree list 2>/dev/null | grep "${WORKTREE_BASE}" | while IFS= read -r line; do
-      echo "  $line"
-    done
-    echo ""
-  fi
-
-  # Check for no state at all
-  if [ ! -f "${ORCH_STATE}/orchestrator.json" ]; then
-    echo "No active orchestrator state found."
-    echo "Run 'ralph run --plan <dir> --unified-pr' to start."
+  else
+    if [ "$_json_mode" -eq 1 ]; then
+      _render_json "$ORCH_STATE" "$WORKTREE_BASE"
+    else
+      _render_table "$ORCH_STATE" "$WORKTREE_BASE"
+    fi
   fi
 }
 
