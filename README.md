@@ -46,6 +46,7 @@ The default philosophy here is:
 │   ├── specs/
 │   ├── reports/
 │   ├── evidence/
+│   ├── tech-debt/
 │   ├── recipes/
 │   ├── roadmap/
 │   └── references/
