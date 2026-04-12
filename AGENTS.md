@@ -27,8 +27,8 @@ Build coding-agent workflows that are:
 4. Self-review (auto — via `reviewer` subagent, or pipeline-internal)
 5. Verify (auto — via `verifier` subagent, or pipeline-internal)
 6. Test (auto — via `tester` subagent, or pipeline-internal)
-7. Sync docs (auto — via `doc-maintainer` subagent, or pipeline-internal)
-8. Codex review (auto, optional — cross-model second opinion)
+7. Sync-docs (auto — via `doc-maintainer` subagent, or pipeline-internal)
+8. Codex-review (auto, optional — cross-model second opinion)
 9. PR (auto — includes hand-off)
 10. CI verify + human merge
 
