@@ -92,11 +92,7 @@ The default philosophy here is:
 
 This scaffold assumes the following default loop. `/spec` is the only manual trigger; all other steps are auto-invoked.
 
-1. **Explore**
-   - Read relevant code, docs, rules, and open plans
-   - Decide whether the task is small enough to stay single-session
-
-1.5. **Spec** (manual, optional — `/spec`)
+1. **Spec** (manual, optional — `/spec`)
    - Use when the request is too vague for `/plan`
    - Explores the codebase, researches best practices, and clarifies requirements interactively
    - Produces a spec file in `docs/specs/` and optionally creates a GitHub issue
@@ -140,8 +136,8 @@ This scaffold assumes the following default loop. `/spec` is the only manual tri
    - Include walkthrough for large diffs
 
 10. **CI + Human merge**
-   - `verify.yml` runs `run-verify.sh` on the PR
-   - Human reviews and merges
+    - `verify.yml` runs `run-verify.sh` on the PR
+    - Human reviews and merges
 
 ## Hook configuration
 
