@@ -79,7 +79,7 @@ The default philosophy here is:
    ```
 
 4. In Claude Code, follow the loop:
-   - `/spec` (optional) → `/plan` → `/work` (or `/loop`) → `/self-review` → `/verify` → `/test` → `/codex-review` (optional) → `/pr`
+   - `/spec` (optional) → `/plan` → `/work` (or `/loop`) → `/self-review` → `/verify` → `/test` → `/sync-docs` → `/codex-review` (optional) → `/pr`
 
 5. Before claiming a task is done, run:
 
@@ -124,17 +124,21 @@ This scaffold assumes the following default loop. `/spec` is the only manual tri
    - Run behavioral tests (unit, integration, regression)
    - Tests must pass before PR creation
 
-7. **Codex review** (auto, optional — `/codex-review`)
+7. **Sync docs** (auto — `/sync-docs`)
+   - Sync plans, docs, and instruction files after behavior changes
+   - Check for documentation drift across AGENTS.md, CLAUDE.md, rules, and README
+
+8. **Codex review** (auto, optional — `/codex-review`)
    - Cross-model second opinion on the diff using Codex CLI
    - Silently skipped if Codex is unavailable
    - Findings are advisory — user decides whether to act
 
-8. **PR** (auto — `/pr`)
+9. **PR** (auto — `/pr`)
    - Create a pull request with structured summary
    - Archive finished plans from `active/` to `archive/`
    - Include walkthrough for large diffs
 
-9. **CI + Human merge**
+10. **CI + Human merge**
    - `verify.yml` runs `run-verify.sh` on the PR
    - Human reviews and merges
 
