@@ -2,6 +2,21 @@ package state
 
 import "time"
 
+// SliceStatus represents the execution status of a slice.
+type SliceStatus = string
+
+const (
+	StatusComplete    SliceStatus = "complete"
+	StatusRunning     SliceStatus = "running"
+	StatusPending     SliceStatus = "pending"
+	StatusFailed      SliceStatus = "failed"
+	StatusStuck       SliceStatus = "stuck"
+	StatusAborted     SliceStatus = "aborted"
+	StatusRepairLimit SliceStatus = "repair_limit"
+	StatusConfigError SliceStatus = "config_error"
+	StatusMaxRetries  SliceStatus = "max_retries"
+)
+
 // OrchestratorState represents the orchestrator.json file written by ralph-orchestrator.sh.
 type OrchestratorState struct {
 	Plan              string `json:"plan"`
@@ -25,6 +40,8 @@ type SliceState struct {
 	ElapsedSecs int64               `json:"elapsed_seconds"`
 	TestResult  string              `json:"test_result"`
 	PRUrl       string              `json:"pr_url"`
+	PID         int                 `json:"pid,omitempty"`
+	StartedAt   *time.Time          `json:"started_at,omitempty"`
 	Checkpoint  *PipelineCheckpoint `json:"checkpoint,omitempty"`
 }
 
