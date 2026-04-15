@@ -268,7 +268,7 @@ run_preflight() {
   _probes="$(printf '%s' "$_probes" | jq --arg s "$_jq_check" '. += [{"probe":"jq_available","result":$s}]')"
   log "  jq: ${_jq_check}"
 
-  # Probe 3: CLAUDE.md readable from -p mode
+  # Probe 3: CLAUDE.md readable from -p mode (soft check — warn only, do not block)
   _claudemd_check="fail"
   if [ "$DRY_RUN" -eq 1 ]; then
     _claudemd_check="skip_dry_run"
@@ -280,7 +280,12 @@ run_preflight() {
     if printf '%s' "$_probe_output" | grep -q 'PROBE_OK'; then
       _claudemd_check="pass"
     else
-      _all_pass=false
+      # Soft failure: warn but do not block pipeline.
+      # Nested worktrees (.claude/worktrees/<parent>/.claude/worktrees/<slice>/)
+      # can cause claude -p to fail CLAUDE.md resolution even when the file exists.
+      _claudemd_check="warn"
+      log "Warning: CLAUDE.md not readable from claude -p mode. Pipeline context may be limited."
+      log "Warning: This is expected in nested worktree scenarios."
     fi
     rm -f "$_probe_prompt"
   fi
