@@ -33,17 +33,39 @@ type OrchestratorState struct {
 // SliceState represents the status of a single slice, read from slice-<name>.status files
 // and enriched with checkpoint data.
 type SliceState struct {
-	Name       string              `json:"name"`
-	Status     SliceStatus         `json:"status"`
-	Phase      string              `json:"phase"`
-	Cycle      int                 `json:"cycle"`
-	MaxCycles  int                 `json:"max_cycles"`
-	Elapsed    int                 `json:"elapsed"`
-	TestResult string              `json:"test_result"`
-	PRURL      string              `json:"pr_url"`
-	PID        int                 `json:"pid,omitempty"`
-	StartedAt  *time.Time          `json:"started_at,omitempty"`
-	Checkpoint *PipelineCheckpoint `json:"checkpoint,omitempty"`
+	Name         string              `json:"name"`
+	Status       SliceStatus         `json:"status"`
+	Phase        string              `json:"phase"`
+	Cycle        int                 `json:"cycle"`
+	MaxCycles    int                 `json:"max_cycles"`
+	Elapsed      int                 `json:"elapsed"`
+	TestResult   string              `json:"test_result"`
+	PRURL        string              `json:"pr_url"`
+	PID          int                 `json:"pid,omitempty"`
+	StartedAt    *time.Time          `json:"started_at,omitempty"`
+	LogPath      string              `json:"log_path,omitempty"`
+	WorktreePath string              `json:"worktree_path,omitempty"`
+	Checkpoint   *PipelineCheckpoint `json:"checkpoint,omitempty"`
+}
+
+// CanRetry returns true if the slice is in a state that supports retry.
+func (s *SliceState) CanRetry() bool {
+	return s.Status == StatusFailed || s.Status == StatusStuck
+}
+
+// CanAbort returns true if the slice is in a state that supports abort.
+func (s *SliceState) CanAbort() bool {
+	return s.Status == StatusRunning || s.Status == StatusFailed || s.Status == StatusStuck
+}
+
+// HasLogs returns true if the slice has a log path.
+func (s *SliceState) HasLogs() bool {
+	return s.LogPath != ""
+}
+
+// HasWorktree returns true if the slice has a worktree path.
+func (s *SliceState) HasWorktree() bool {
+	return s.WorktreePath != ""
 }
 
 // PipelineCheckpoint represents .harness/state/pipeline/checkpoint.json.
