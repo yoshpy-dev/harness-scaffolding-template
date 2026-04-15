@@ -80,14 +80,21 @@ log_error() { printf '[%s] ERROR: %s\n' "$(ts)" "$*" >&2; }
 # Signal handling and cleanup
 # ═══════════════════════════════════════════════════════════════════
 
+_INTERRUPTED=0
+
 # Register a child PID for cleanup tracking
 register_child() {
   _CHILD_PIDS="${_CHILD_PIDS:+${_CHILD_PIDS} }$1"
 }
 
+# Signal handler — sets flag and exits to trigger EXIT trap
+_on_signal() {
+  _INTERRUPTED=1
+  exit 1
+}
+
 # Kill tracked child processes and update orchestrator status
 cleanup_on_exit() {
-  _exit_code=$?
   # Kill all tracked child PIDs
   for _cpid in $_CHILD_PIDS; do
     if kill -0 "$_cpid" 2>/dev/null; then
@@ -106,8 +113,9 @@ cleanup_on_exit() {
     fi
     rm -f "$_pf"
   done
-  # Update orchestrator.json status if interrupted
-  if [ -f "${ORCH_STATE}/orchestrator.json" ] && [ "$_exit_code" -ne 0 ]; then
+  # Update orchestrator.json status ONLY on genuine signal interrupts.
+  # Normal non-zero exits (e.g., partial failures) preserve their own status.
+  if [ "$_INTERRUPTED" -eq 1 ] && [ -f "${ORCH_STATE}/orchestrator.json" ]; then
     if command -v jq >/dev/null 2>&1; then
       jq --arg s "interrupted" '.status = $s | .ended = "'"$(ts)"'"' \
         "${ORCH_STATE}/orchestrator.json" > "${ORCH_STATE}/orchestrator.tmp.$$.json" 2>/dev/null \
@@ -116,7 +124,8 @@ cleanup_on_exit() {
   fi
 }
 
-trap cleanup_on_exit INT TERM EXIT
+trap _on_signal INT TERM
+trap cleanup_on_exit EXIT
 
 # ═══════════════════════════════════════════════════════════════════
 # Plan parsing — extract slices from markdown

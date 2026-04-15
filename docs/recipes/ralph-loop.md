@@ -125,7 +125,7 @@ All loop state lives in `.harness/state/loop/`:
 | Completion gate | Agent must output `<promise>COMPLETE</promise>` explicitly |
 | Abort signal | Agent can output `<promise>ABORT</promise>` when blocked |
 | Slice timeout | `RALPH_SLICE_TIMEOUT` seconds per slice (default 1800 = 30 min) |
-| Signal handling | `trap INT TERM EXIT` in orchestrator/pipeline/loop for clean shutdown |
+| Signal handling | Separate INT/TERM and EXIT traps with `_INTERRUPTED` flag for clean signal/exit discrimination |
 | Numeric validation | All numeric config values validated at startup |
 | Verification | `--verify` flag runs `run-verify.sh` after each iteration |
 | Prompt rules | Safety rules embedded in every template (no sudo, no force push) |
