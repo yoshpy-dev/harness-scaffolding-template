@@ -10,6 +10,8 @@ set -eu
 #   abort    Safely stop and clean up pipeline state
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "${SCRIPT_DIR}/ralph-config.sh"
+
 LOOP_DIR=".harness/state/loop"
 PIPELINE_DIR=".harness/state/pipeline"
 ORCH_STATE=".harness/state/orchestrator"

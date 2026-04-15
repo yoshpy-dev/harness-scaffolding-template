@@ -220,7 +220,7 @@ Or use the `/loop` skill inside Claude Code for interactive setup.
 
 When a TUI binary (`bin/ralph-tui`) is available and the terminal is a TTY, `ralph status` launches a Lazygit-style 4-pane interface for real-time slice monitoring, log tailing, and interactive retry/abort. If the binary is missing or outdated, it falls back to the existing table output.
 
-Safety rails include iteration limits, stuck detection (3 consecutive no-change iterations), Inner/Outer Loop architecture with repair attempt caps, and hook parity checks.
+Safety rails include iteration limits, stuck detection (3 consecutive no-change iterations), Inner/Outer Loop architecture with repair attempt caps, slice timeout detection, signal handlers for clean shutdown, and hook parity checks. All pipeline settings (model, effort, permission mode, iteration caps, timeouts) are configurable via environment variables through `scripts/ralph-config.sh`.
 
 See `docs/recipes/ralph-loop.md` for the full guide.
 
