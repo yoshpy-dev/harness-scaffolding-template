@@ -118,9 +118,17 @@ func executeInit(targetDir string, cfg initConfig) error {
 		return fmt.Errorf("creating directory: %w", err)
 	}
 
+	// If a manifest already exists, this is a re-init on an existing project.
+	// Delegate to upgrade logic to preserve user-edited files.
+	manifestPath := filepath.Join(targetDir, ".ralph", "manifest.toml")
+	if _, err := os.Stat(manifestPath); err == nil {
+		fmt.Printf("\nExisting project detected. Running upgrade instead...\n\n")
+		return runUpgrade(targetDir, false)
+	}
+
 	fmt.Printf("\nScaffolding %q into %s ...\n\n", cfg.ProjectName, targetDir)
 
-	// Step 1: Render base templates.
+	// Step 1: Render base templates (fresh init — no manifest, safe to overwrite).
 	baseFS, err := scaffold.BaseFS()
 	if err != nil {
 		return fmt.Errorf("loading base templates: %w", err)
@@ -167,8 +175,8 @@ func executeInit(targetDir string, cfg initConfig) error {
 	if err := os.MkdirAll(manifestDir, 0755); err != nil {
 		return fmt.Errorf("creating .ralph dir: %w", err)
 	}
-	manifestPath := filepath.Join(manifestDir, "manifest.toml")
-	if err := manifest.Write(manifestPath); err != nil {
+	mPath := filepath.Join(manifestDir, "manifest.toml")
+	if err := manifest.Write(mPath); err != nil {
 		return fmt.Errorf("writing manifest: %w", err)
 	}
 	fmt.Printf("  ✓ .ralph/manifest.toml\n")

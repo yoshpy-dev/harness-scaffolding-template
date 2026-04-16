@@ -97,7 +97,9 @@ func runUpgrade(targetDir string, force bool) error {
 					manifest.SetFile(d.Path, d.NewHash)
 					updated++
 				case "skip":
-					manifest.SetFile(d.Path, d.DiskHash)
+					// Preserve the OLD template hash so next upgrade still
+					// detects this file as user-modified (not auto-overwritable).
+					manifest.SetFile(d.Path, d.OldHash)
 					fmt.Printf("  ⊘ %s (skipped)\n", d.Path)
 					skipped++
 				}
