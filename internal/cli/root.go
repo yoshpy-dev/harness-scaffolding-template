@@ -24,6 +24,7 @@ manages template updates, and runs autonomous development pipelines.`,
 
 	root.AddCommand(
 		newInitCmd(),
+		newUpgradeCmd(),
 		newVersionCmd(),
 		newStatusCmd(),
 	)
