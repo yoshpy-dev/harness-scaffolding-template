@@ -58,6 +58,21 @@ func runUpgrade(targetDir string, force bool) error {
 		return fmt.Errorf("computing diffs: %w", err)
 	}
 
+	// Also diff installed language packs. Detect which packs are in the
+	// manifest (files that exist in a pack's FS) and compute diffs for each.
+	availPacks, _ := scaffold.AvailablePacks()
+	for _, pack := range availPacks {
+		packFS, pErr := scaffold.PackFS(pack)
+		if pErr != nil {
+			continue
+		}
+		packDiffs, pErr := upgrade.ComputeDiffs(manifestPath, absDir, packFS)
+		if pErr != nil {
+			continue
+		}
+		diffs = append(diffs, packDiffs...)
+	}
+
 	var updated, skipped, notified int
 
 	manifest := scaffold.NewManifest(Version)
