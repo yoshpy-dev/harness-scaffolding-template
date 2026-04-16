@@ -1,0 +1,51 @@
+version: 2
+
+project_name: ralph
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/ralph
+    binary: ralph
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.GitCommit={{.ShortCommit}}
+      - -X main.BuildDate={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+brews:
+  - repository:
+      owner: yoshpy-dev
+      name: homebrew-tap
+    homepage: "https://github.com/yoshpy-dev/harness-engineering-scaffolding-template"
+    description: "Harness engineering scaffold and autonomous pipeline CLI"
+    license: MIT
+    install: |
+      bin.install "ralph"
+    test: |
+      system "#{bin}/ralph", "version"
