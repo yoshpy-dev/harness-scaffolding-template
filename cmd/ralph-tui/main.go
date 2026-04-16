@@ -113,6 +113,7 @@ type appModel struct {
 	orchDir  string
 	wtBase   string
 	planDir  string
+	tailer   *watcher.Tailer
 
 	// Sub-models (owned here to avoid ui ← ui/panes cycle).
 	sliceList panes.SliceListModel
@@ -156,7 +157,22 @@ func newAppModel(status *state.FullStatus, w *watcher.Watcher, exec *action.Exec
 }
 
 func (m *appModel) Init() tea.Cmd {
-	return m.watcher.Watch()
+	cmds := []tea.Cmd{m.watcher.Watch()}
+
+	// Create a tailer for log streaming. Start with the first slice's log if available.
+	if s, ok := m.sliceList.SelectedSlice(); ok && s.LogPath != "" {
+		if t, err := watcher.NewTailer(s.Name, s.LogPath); err == nil {
+			m.tailer = t
+			cmds = append(cmds, t.Tail())
+		}
+	} else {
+		// Create a tailer that waits for a file to be set via SwitchFile.
+		if t, err := watcher.NewTailer("", os.DevNull); err == nil {
+			m.tailer = t
+		}
+	}
+
+	return tea.Batch(cmds...)
 }
 
 func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -193,7 +209,10 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case watcher.LogLineMsg:
 		m.logView.AppendLine(msg.Line)
 		m.syncPaneContents()
-		cmds = append(cmds, m.watcher.Watch())
+		// Re-subscribe to both watcher and tailer.
+		if m.tailer != nil {
+			cmds = append(cmds, m.tailer.Tail())
+		}
 		return m, tea.Batch(cmds...)
 
 	case watcher.WatcherErrorMsg:
@@ -213,6 +232,12 @@ func (m *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s := msg.Slice
 		m.detail.SetSlice(&s)
 		m.deps.SetSelected(s.Name)
+		// Forward to actions pane so it knows which slice is selected.
+		m.actions, _ = m.actions.Update(msg)
+		// Switch log tailer to the selected slice's log file.
+		if s.LogPath != "" && m.tailer != nil {
+			_ = m.tailer.SwitchFile(s.Name, s.LogPath)
+		}
 		m.syncPaneContents()
 		return m, nil
 	}

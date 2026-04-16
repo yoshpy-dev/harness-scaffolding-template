@@ -293,9 +293,11 @@ cmd_retry() {
     exit 1
   fi
 
-  # --- Update status and launch pipeline ---
+  # --- Update status and reset timeout baseline ---
   echo "running" > "$_status_file"
-  log "Updated status to 'running'."
+  # Reset start time so the orchestrator's timeout check uses the retry time, not the original.
+  date -u +"%Y-%m-%dT%H:%M:%SZ" > "${ORCH_STATE}/slice-${_slice}.started"
+  log "Updated status to 'running' and reset start time."
 
   # Launch pipeline in background
   (

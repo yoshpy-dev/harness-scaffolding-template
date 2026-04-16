@@ -292,6 +292,36 @@ func TestReadSliceDependencies(t *testing.T) {
 			t.Errorf("got %d deps, want 0", len(deps))
 		}
 	})
+
+	t.Run("resolves slice-N to real names", func(t *testing.T) {
+		// When slice names are provided, "slice-1" should resolve to the real name.
+		names := []string{"1-ralph-tui", "2-ralph-tui", "3-ralph-tui", "4-ralph-tui", "5-ralph-tui", "6-ralph-tui"}
+		deps, err := ReadSliceDependencies("testdata", names...)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		expected := []SliceDependency{
+			{From: "1-ralph-tui", To: "2-ralph-tui"},
+			{From: "1-ralph-tui", To: "3-ralph-tui"},
+			{From: "3-ralph-tui", To: "4-ralph-tui"},
+			{From: "3-ralph-tui", To: "5-ralph-tui"},
+			{From: "2-ralph-tui", To: "6-ralph-tui"},
+			{From: "4-ralph-tui", To: "6-ralph-tui"},
+			{From: "5-ralph-tui", To: "6-ralph-tui"},
+		}
+
+		if len(deps) != len(expected) {
+			t.Fatalf("got %d deps, want %d: %+v", len(deps), len(expected), deps)
+		}
+
+		for i, want := range expected {
+			if deps[i].From != want.From || deps[i].To != want.To {
+				t.Errorf("dep[%d] = {%s->%s}, want {%s->%s}",
+					i, deps[i].From, deps[i].To, want.From, want.To)
+			}
+		}
+	})
 }
 
 func TestListSliceNames(t *testing.T) {
@@ -367,8 +397,9 @@ func TestReadFullStatus(t *testing.T) {
 	if len(full.Dependencies) != 1 {
 		t.Fatalf("dependencies count = %d, want 1", len(full.Dependencies))
 	}
-	if full.Dependencies[0].From != "slice-1" || full.Dependencies[0].To != "slice-2" {
-		t.Errorf("dependency = {%s->%s}, want {slice-1->slice-2}",
+	// With slice names ["1-ralph-tui", "2-ralph-tui"], "slice-1" resolves to "1-ralph-tui".
+	if full.Dependencies[0].From != "1-ralph-tui" || full.Dependencies[0].To != "2-ralph-tui" {
+		t.Errorf("dependency = {%s->%s}, want {1-ralph-tui->2-ralph-tui}",
 			full.Dependencies[0].From, full.Dependencies[0].To)
 	}
 
