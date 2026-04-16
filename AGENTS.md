@@ -42,11 +42,18 @@ Steps 4–9 run via subagents in 標準フロー. In Ralph Loop, they are handle
 
 ## Repo map
 
-- `cmd/ralph-tui/` — Go entrypoint for Bubble Tea TUI (`main.go`, `version.go`)
+- `cmd/ralph/` — Go entrypoint for the ralph CLI (cobra root, ldflags injection, go:embed wiring)
+- `cmd/ralph-tui/` — Legacy TUI entrypoint (to be removed in Phase 9)
+- `internal/cli/` — cobra subcommands (init, upgrade, run, status, retry, abort, doctor, pack, version)
+- `internal/scaffold/` — go:embed template system, manifest TOML, file render with SHA256 hashes
+- `internal/upgrade/` — hash-based diff engine, conflict resolution (auto-update, conflict, add, remove)
+- `internal/config/` — ralph.toml parser with defaults
+- `internal/prompt/` — prompt template resolver (project-local → embedded fallback)
 - `internal/state/` — pipeline state reader (checkpoint, orchestrator, manifest parsing)
 - `internal/watcher/` — fsnotify-based file watcher with polling fallback
 - `internal/ui/` — Bubble Tea model, layout, panes, keybindings, styles
-- `internal/action/` — CLI action executor (retry, abort via `scripts/ralph`)
+- `internal/action/` — CLI action executor (retry, abort)
+- `templates/` — go:embed source: base scaffold, language packs, prompt templates
 - `docs/specs/` — spec files produced by `/spec` (`<date>-<slug>.md`)
 - `docs/plans/active/` — current plans (single files for standard flow; `<date>-<slug>/` directories with `_manifest.md` + `slice-*.md` for Ralph Loop)
 - `docs/plans/archive/` — completed plans
@@ -57,8 +64,8 @@ Steps 4–9 run via subagents in 標準フロー. In Ralph Loop, they are handle
 - `.claude/skills/` — on-demand workflows
 - `.claude/agents/` — specialized subagents
 - `.claude/hooks/` — deterministic runtime checks
-- `packs/languages/` — language-specific depth
-- `scripts/` — reusable verification and bootstrap scripts (includes `ralph` CLI, `ralph-config.sh`, `ralph-pipeline.sh`, `ralph-orchestrator.sh`, `new-ralph-plan.sh`, `build-tui.sh`)
+- `packs/languages/` — language-specific depth (also copied to `templates/packs/` for embedding)
+- `scripts/` — reusable verification and bootstrap scripts (includes legacy `ralph` shell CLI, `ralph-config.sh`, `ralph-pipeline.sh`, `ralph-orchestrator.sh`, `install.sh`)
 - `.harness/state/` — runtime state, not canonical truth
 
 ## Planning contract

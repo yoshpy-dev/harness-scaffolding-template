@@ -270,7 +270,7 @@ harness-engineering-scaffolding-template を `ralph` CLI ツールに変換す�
 ## Progress checklist
 
 - [x] Plan reviewed (Codex advisory: 4 findings → all addressed)
-- [ ] Branch created
+- [x] Branch created (feat/ralph-cli-tool)
 - [x] Spec completed (docs/specs/2026-04-16-ralph-cli-tool.md)
 - [x] Phase 1: リポ構造再編 + cobra 基盤 (fbb999b)
 - [x] Phase 2: テンプレート埋め込み + scaffold 基盤 (b1c71eb)

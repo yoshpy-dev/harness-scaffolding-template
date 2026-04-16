@@ -39,30 +39,57 @@ The default philosophy here is:
 │   ├── agents/
 │   └── rules/
 ├── cmd/
-│   └── ralph-tui/          # TUI entrypoint (Go)
+│   ├── ralph/              # CLI entrypoint (cobra + go:embed)
+│   └── ralph-tui/          # Legacy TUI entrypoint
 ├── internal/
+│   ├── cli/                # Subcommands (init, upgrade, run, doctor, etc.)
+│   ├── scaffold/           # Template embedding + manifest
+│   ├── upgrade/            # Diff engine + conflict resolution
+│   ├── config/             # ralph.toml parser
+│   ├── prompt/             # Prompt template resolver
 │   ├── state/              # Pipeline state reader
 │   ├── watcher/            # File system watcher
 │   ├── ui/                 # Bubble Tea TUI components
 │   └── action/             # CLI action executor
+├── templates/              # go:embed source for ralph init
+│   ├── base/               # Base scaffold (.claude/, AGENTS.md, etc.)
+│   ├── packs/              # Language packs
+│   └── prompts/            # Default pipeline prompt templates
 ├── docs/
-│   ├── research/
-│   ├── architecture/
-│   ├── quality/
-│   ├── plans/
 │   ├── specs/
+│   ├── plans/
 │   ├── reports/
-│   ├── evidence/
+│   ├── quality/
 │   ├── tech-debt/
-│   ├── recipes/
-│   ├── roadmap/
-│   └── references/
+│   └── ...
 ├── packs/
 │   └── languages/
-└── scripts/
+├── scripts/
+├── .goreleaser.yml
+└── .github/workflows/
 ```
 
 ## Quick start
+
+### Option A: Install the ralph CLI (recommended)
+
+```sh
+# Homebrew
+brew install yoshpy-dev/tap/ralph
+
+# Or one-liner
+curl -fsSL https://raw.githubusercontent.com/yoshpy-dev/harness-engineering-scaffolding-template/main/scripts/install.sh | sh
+```
+
+Then scaffold a new project:
+
+```sh
+ralph init my-project
+cd my-project
+ralph doctor          # verify setup
+```
+
+### Option B: Clone the template repo
 
 1. Initialize the project (cleans template artifacts, bootstraps hooks and directories).
 
@@ -76,7 +103,9 @@ The default philosophy here is:
    - `.claude/rules/*.md`
    - `packs/languages/*/verify.sh` or `scripts/verify.local.sh`
 
-3. Create your first plan.
+### Then, in both cases:
+
+1. Create your first plan.
 
    ```sh
    # Standard flow
@@ -86,10 +115,10 @@ The default philosophy here is:
    ./scripts/new-ralph-plan.sh login-form N/A 3
    ```
 
-4. In Claude Code, follow the loop:
+2. In Claude Code, follow the loop:
    - `/spec` (optional) → `/plan` → `/work` (or `/loop`) → `/self-review` → `/verify` → `/test` → `/sync-docs` → `/codex-review` (optional) → `/pr`
 
-5. Before claiming a task is done, run:
+3. Before claiming a task is done, run:
 
    ```sh
    ./scripts/run-verify.sh
