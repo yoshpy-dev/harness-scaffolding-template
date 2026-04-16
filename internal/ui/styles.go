@@ -8,7 +8,7 @@ import (
 
 // Color constants used across the TUI.
 var (
-	ColorFocusBorder  = lipgloss.Color("62")  // purple
+	ColorFocusBorder   = lipgloss.Color("62")  // purple
 	ColorNormalBorder  = lipgloss.Color("240") // gray
 	ColorTitle         = lipgloss.Color("170") // pink
 	ColorStatusOK      = lipgloss.Color("42")  // green

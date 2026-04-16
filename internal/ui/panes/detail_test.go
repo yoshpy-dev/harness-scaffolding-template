@@ -73,9 +73,9 @@ func TestDetailSliceSelectedMsg(t *testing.T) {
 func TestDetailCycleWithoutMax(t *testing.T) {
 	m := NewDetail(60, 20)
 	s := state.SliceState{
-		Name:       "test",
-		Status:     state.StatusRunning,
-		Cycle: 3,
+		Name:   "test",
+		Status: state.StatusRunning,
+		Cycle:  3,
 	}
 	m.SetSlice(&s)
 
@@ -88,8 +88,8 @@ func TestDetailCycleWithoutMax(t *testing.T) {
 func TestDetailNoCycleNoPhasePRTestResult(t *testing.T) {
 	m := NewDetail(60, 20)
 	s := state.SliceState{
-		Name:        "minimal",
-		Status:      state.StatusPending,
+		Name:    "minimal",
+		Status:  state.StatusPending,
 		Elapsed: 0,
 	}
 	m.SetSlice(&s)
