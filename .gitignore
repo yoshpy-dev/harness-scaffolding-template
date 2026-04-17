@@ -21,6 +21,10 @@ __pycache__/
 .harness/state/
 !.harness/state/.gitkeep
 
+# Built binaries
+/ralph
+/ralph-tui
+
 # Go test coverage artifacts
 coverage.out
 

@@ -31,11 +31,6 @@ func PackFS(lang string) (fs.FS, error) {
 	return fs.Sub(EmbeddedFS, "templates/packs/"+lang)
 }
 
-// PromptsFS returns the filesystem rooted at templates/prompts/.
-func PromptsFS() (fs.FS, error) {
-	return fs.Sub(EmbeddedFS, "templates/prompts")
-}
-
 // AvailablePacks lists all language packs in templates/packs/.
 func AvailablePacks() ([]string, error) {
 	entries, err := fs.ReadDir(EmbeddedFS, "templates/packs")

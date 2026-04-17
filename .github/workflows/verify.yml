@@ -13,9 +13,9 @@ jobs:
           echo "Checking shell script syntax..."
           fail=0
           for f in scripts/*.sh; do
-            if ! sh -n "$f" 2>/dev/null; then
+            if ! bash -n "$f" 2>/dev/null; then
               echo "FAIL: $f"
-              sh -n "$f"
+              bash -n "$f"
               fail=1
             fi
           done
@@ -32,3 +32,5 @@ jobs:
           COVERAGE_THRESHOLD: "80"
       - name: Check pipeline order sync
         run: ./scripts/check-pipeline-sync.sh
+      - name: Check template sync
+        run: ./scripts/check-sync.sh

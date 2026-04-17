@@ -21,8 +21,6 @@ func setupTestEmbedFS(t *testing.T) {
 		"templates/packs/golang/README.md":     {Data: []byte("# Go\n")},
 		"templates/packs/typescript/verify.sh": {Data: []byte("#!/bin/sh\necho ok\n")},
 		"templates/packs/typescript/README.md": {Data: []byte("# TS\n")},
-		"templates/prompts/self-review.md":     {Data: []byte("review prompt\n")},
-		"templates/prompts/verify.md":          {Data: []byte("verify prompt\n")},
 	}
 }
 

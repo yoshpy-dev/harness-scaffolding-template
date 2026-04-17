@@ -1,23 +1,34 @@
 # AGENTS.md
 
-Treat this file as a **map**: short, stable, cross-vendor, easy to verify against the repo.
+Treat this file as a **map**:
+- short
+- stable
+- cross-vendor
+- easy to verify against the repo
 
 ## Mission
 
-Build coding-agent workflows that are reliable, inspectable, evidence-backed, and easy to extend.
+Build coding-agent workflows that are:
+- reliable
+- inspectable
+- evidence-backed
+- easy to extend
 
 ## Primary loop
 
-1. Spec (manual, optional)
-2. Plan (auto)
-3. Work (auto) or Loop (auto, parallel slices)
-4. Self-review (auto)
-5. Verify (auto)
-6. Test (auto)
-7. Sync-docs (auto)
-8. Codex-review (auto, optional)
-9. PR (auto)
+1. Spec (manual, optional — refines vague ideas into detailed specifications via codebase exploration, web research, and user clarification → `docs/specs/` or GitHub issue)
+2. Plan (auto — creates plan, selects flow) [+ optional Codex plan advisory]
+3. **Standard flow**: Work (auto — creates branch, interactive implementation)
+   **Ralph Loop**: Loop (auto — directory-based plan → `ralph-orchestrator.sh` → multi-worktree parallel → integration branch → integration pipeline → unified PR)
+4. Self-review (auto — via `reviewer` subagent, or pipeline-internal)
+5. Verify (auto — via `verifier` subagent, or pipeline-internal)
+6. Test (auto — via `tester` subagent, or pipeline-internal)
+7. Sync-docs (auto — via `doc-maintainer` subagent, or pipeline-internal)
+8. Codex-review (auto, optional — cross-model second opinion)
+9. PR (auto — includes hand-off)
 10. CI verify + human merge
+
+Steps 4–9 run via subagents in standard flow. In Ralph Loop, they are handled internally by the pipeline scripts.
 
 ## Source of truth
 
@@ -30,25 +41,63 @@ Build coding-agent workflows that are reliable, inspectable, evidence-backed, an
 
 <!-- Update this section to reflect your project's structure -->
 
-- `docs/specs/` — spec files
+- `docs/specs/` — spec files produced by `/spec`
 - `docs/plans/active/` — current plans
 - `docs/plans/archive/` — completed plans
-- `docs/reports/` — review, verify, test artifacts
+- `docs/plans/templates/` — plan templates
+- `docs/reports/` — self-review, verify, test, walkthrough artifacts
 - `docs/quality/` — definition of done and quality gates
 - `.claude/rules/` — path-scoped guidance
 - `.claude/skills/` — on-demand workflows
 - `.claude/agents/` — specialized subagents
 - `.claude/hooks/` — deterministic runtime checks
+- `scripts/` — reusable verification and bootstrap scripts
 
 ## Planning contract
 
-Every non-trivial task should have: objective, scope, acceptance criteria, verify plan, test plan, risk register, and evidence targets.
+Every non-trivial task should have:
+- objective
+- scope and non-goals
+- affected files or modules
+- acceptance criteria
+- verify plan (static analysis, spec compliance, doc drift)
+- test plan (unit, integration, regression, edge cases)
+- risk register
+- rollout or rollback note
+- evidence targets
+
+## Review contract
+
+Reviews should produce artifacts, not only chat output:
+- findings with severity (diff quality only)
+- evidence
+- merge or no-merge recommendation
+- follow-ups
+- known gaps
+
+## Verification & test contracts
+
+See `docs/quality/definition-of-done.md` for full checklists.
+
+Key rule: never say "done" without saying what was verified and what remains unverified. Tests must pass before PR creation.
 
 ## Hard rules
 
 - Keep this file short
 - Keep `CLAUDE.md` short
-- Move detailed guidance into `.claude/rules/`
-- Move workflows into `.claude/skills/`
+- Move detailed topic guidance into `.claude/rules/`
+- Move step-by-step workflows into `.claude/skills/`
 - Promote repeated mistakes into hooks, tests, CI, or scripts
-- Update docs when behavior changes
+- Do not expand plans into brittle low-level instructions unless the task truly needs it
+- Keep names grep-able and boundaries explicit
+- Update docs when behavior, contracts, or workflows change
+
+## Human escalation boundaries
+
+Escalate to a human only for:
+- irreversible destructive actions
+- secrets or credentials you cannot access
+- product or design judgment that cannot be verified from repo context
+- external approvals that are genuinely required
+
+Everything else should first attempt self-verification.

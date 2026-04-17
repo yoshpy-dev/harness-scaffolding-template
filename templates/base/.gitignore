@@ -21,7 +21,11 @@ __pycache__/
 .harness/state/
 !.harness/state/.gitkeep
 
-# Test coverage artifacts
+# Built binaries
+/ralph
+/ralph-tui
+
+# Go test coverage artifacts
 coverage.out
 
 # Auto-generated verification evidence (run-verify.sh output)

@@ -48,12 +48,11 @@ Steps 4–9 run via subagents in 標準フロー. In Ralph Loop, they are handle
 - `internal/scaffold/` — go:embed template system, manifest TOML, file render with SHA256 hashes
 - `internal/upgrade/` — hash-based diff engine, conflict resolution (auto-update, conflict, add, remove)
 - `internal/config/` — ralph.toml parser with defaults
-- `internal/prompt/` — prompt template resolver (project-local → embedded fallback)
 - `internal/state/` — pipeline state reader (checkpoint, orchestrator, manifest parsing)
 - `internal/watcher/` — fsnotify-based file watcher with polling fallback
 - `internal/ui/` — Bubble Tea model, layout, panes, keybindings, styles
 - `internal/action/` — CLI action executor (retry, abort)
-- `templates/` — go:embed source: base scaffold, language packs, prompt templates
+- `templates/` — go:embed source: base scaffold, language packs
 - `docs/specs/` — spec files produced by `/spec` (`<date>-<slug>.md`)
 - `docs/plans/active/` — current plans (single files for standard flow; `<date>-<slug>/` directories with `_manifest.md` + `slice-*.md` for Ralph Loop)
 - `docs/plans/archive/` — completed plans
