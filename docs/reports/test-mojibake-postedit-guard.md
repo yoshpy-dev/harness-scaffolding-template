@@ -130,3 +130,61 @@ None of these gaps warrant blocking the PR.
 All acceptance criteria from the plan are exercised by the test suite. Evidence file: `docs/evidence/test-2026-04-17-mojibake-postedit-guard.log` (15k, contains full `run-test.sh` output + standalone hook test + 3 regression suites).
 
 Proceed to `/sync-docs`.
+
+## Re-test after Codex fixes (commit 306b23a)
+
+- Date: 2026-04-17
+- Commit under test: `306b23a fix: address Codex P3 (matcher symmetry), P2 (mode split), P1 hardening`
+- Prior verdict: PASS (88 assertions)
+- Scope of delta:
+  1. `scripts/verify.local.sh` now branches on `HARNESS_VERIFY_MODE` (`static` | `test` | `all`); `run-static-verify.sh` and `run-test.sh` pass `static` / `test` to the wrapper.
+  2. `tests/test-check-mojibake.sh` minimal PATH link set for Case E expanded (`dirname env ln test` added) to harden the jq-missing path simulation.
+  3. `.claude/settings.json` + `templates/base/.claude/settings.json`: `PostToolUseFailure` matcher expanded `Bash|Edit|Write` → `Bash|Edit|Write|MultiEdit` for symmetry with the PostToolUse matcher.
+- Evidence: `docs/evidence/test-retest-306b23a-*.log` (7 logs: all-mode, static-mode, test-mode, standalone-mojibake, regress-config, regress-signals, regress-status).
+
+### Re-test execution table
+
+| # | Command | Expected | Actual exit | hook test executed? | static checks executed? | Verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | `./scripts/run-verify.sh` (HARNESS_VERIFY_MODE=all default) | exit 0 | 0 | yes | yes | PASS |
+| 2 | `HARNESS_VERIFY_MODE=static ./scripts/run-static-verify.sh` | exit 0 + test-check-mojibake.sh NOT run | 0 | no (0 occurrences in log) | yes (sh -n ×18, jq ×2, check-sync.sh) | PASS |
+| 3 | `HARNESS_VERIFY_MODE=test ./scripts/run-test.sh` | exit 0 + test-check-mojibake.sh IS run | 0 | yes (1 occurrence in log) | no (no sh -n, no jq, no check-sync) | PASS |
+| 4 | `bash tests/test-check-mojibake.sh` standalone | 11/11 PASS | 0 | — | — | PASS (11/11) |
+| 5a | `bash tests/test-ralph-config.sh` regression | 23/23 PASS | 0 | — | — | PASS (23/23) |
+| 5b | `bash tests/test-ralph-signals.sh` regression | 3/3 PASS | 0 | — | — | PASS (3/3) |
+| 5c | `bash tests/test-ralph-status.sh` regression | 40/40 PASS | 0 | — | — | PASS (40/40) |
+
+### Mode-split verification details
+
+Observed via `grep -c 'tests/test-check-mojibake.sh'` and `grep -c 'check-sync.sh'` on mode-specific evidence:
+
+```
+static-mode.log: test-check-mojibake.sh occurrences = 0   ✓ (correctly skipped)
+static-mode.log: check-sync.sh occurrences          = 1   ✓ (executed once)
+test-mode.log:   test-check-mojibake.sh occurrences = 1   ✓ (executed once)
+test-mode.log:   check-sync.sh occurrences          = 0   ✓ (correctly skipped)
+```
+
+The `case "$mode" in … static) run_static_checks ;; test) run_hook_tests ;; all) run_static_checks; run_hook_tests ;;` dispatcher in `scripts/verify.local.sh` is observed to partition steps as documented in `docs/quality/quality-gates.md`.
+
+### PostToolUseFailure matcher change impact
+
+`grep -B1 -A4 'PostToolUseFailure' .claude/settings.json` confirms matcher is `Bash|Edit|Write|MultiEdit`. Templates mirror is byte-for-byte identical (check-sync.sh PASS: 107 identical / 0 drifted). The three ralph-* regression suites do not touch hook dispatch semantics and all remain green — matcher expansion has no observed behavioral effect on them.
+
+### Case E jq-missing hardening verification
+
+Case E under the expanded minimal-PATH set (`sh bash dash cat grep sed mkdir rm cd command pwd printf dirname env ln test`) still hits the `jq`-missing early-exit branch:
+
+- exit actual = 0 ✓
+- marker file `$alt_root/.harness/state/mojibake-jq-missing` created ✓ (`PASS  E. jq missing → exit 0 + marker`)
+
+No regression introduced by the additional PATH entries; the hook's `command -v jq` still resolves empty because `jq` is deliberately not linked into `$minimal_path`.
+
+### Re-test verdict
+
+- Pass: yes (all 7 commands exit 0; all assertions green)
+- Fail: none
+- Blocked: none
+- Cumulative assertion count across original + re-test: 88 original + 77 re-run (11 mojibake + 11 mojibake standalone + 23 config + 3 signals + 40 status − overlaps counted once for primary reporting) = no failures anywhere.
+
+Codex P1/P2/P3 fixes land cleanly without regression. Safe to proceed to `/sync-docs`.

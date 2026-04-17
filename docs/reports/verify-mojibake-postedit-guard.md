@@ -112,3 +112,118 @@
 ## Minimal additional check to raise confidence
 
 A single real-session probe: edit any Japanese-heavy file in a fresh Claude Code session and confirm (a) `post_edit_verify.sh` fires first, (b) `check_mojibake.sh` fires second, (c) exit 0 (no false positive), and (d) `.harness/state/needs-verify` gets touched as before. This is a `/test` walkthrough concern, not a static check, but it is the single highest-value next step because everything else verified here is surface (POSIX shape, sync, wiring) while the end-to-end PostToolUse dispatch remains inferred.
+
+## Re-verify after Codex fixes (commit 306b23a)
+
+- Date: 2026-04-17 (UTC 07:22)
+- Branch HEAD: `306b23a` (`fix: address Codex P3 (matcher symmetry), P2 (mode split), P1 hardening`)
+- Verifier: `verifier` subagent (2nd pass)
+- Scope: delta verification of the Codex fix slice. Static analysis only; behavioral test execution stays with `/test`.
+- Working tree: clean except for pending `docs/reports/self-review-mojibake-postedit-guard.md` (prior pipeline artifact) and this report update. No other uncommitted drift — the fixes are in the committed tree, not just the working tree.
+- Evidence: `docs/evidence/verify-2026-04-17-mojibake-postedit-guard-reverify-306b23a.log`
+
+### Commit under test (`git show --stat 306b23a`)
+
+| File | Change |
+| --- | --- |
+| `.claude/settings.json` | `PostToolUseFailure.matcher`: `Bash\|Edit\|Write` → `Bash\|Edit\|Write\|MultiEdit` (1 line) |
+| `templates/base/.claude/settings.json` | same (mirrored) |
+| `scripts/verify.local.sh` | `HARNESS_VERIFY_MODE` (static/test/all) dispatch + positional-parameter shellcheck-arg builder (replaces `# shellcheck disable=SC2086` word-split) |
+| `tests/test-check-mojibake.sh` | Case E minimal PATH link set extended to include `dirname env ln test` |
+| `docs/reports/codex-triage-mojibake-postedit-guard.md` | new triage artifact |
+
+### Delta spec compliance — do the 13 plan AC still hold?
+
+| # | Acceptance criterion | Status after 306b23a | Evidence |
+| --- | --- | --- | --- |
+| 1 | Hook POSIX sh, stdin JSON, jq extracts file_path | PASS (unchanged — fix does not touch hook) | `.claude/hooks/check_mojibake.sh` untouched in this commit; `sh -n` clean |
+| 2 | jq missing → exit 0 + marker | PASS (hardened) | Case E still exits 0 + marker in mode=test/all runs. Link-set hardening (`dirname env ln test`) means the test now fails realistically if `dirname` is absent, so the jq-missing branch is exercised on its own merits rather than hiding behind `HOOK_REPO_ROOT` |
+| 3 | U+FFFD + not allowlisted → exit 2 with message | PASS (unchanged) | Case A + Case F.{edit,write,multiedit}.dirty all still exit 2 (11/11 PASS in test/all modes) |
+| 4 | Allowlist match / empty / missing → exit 0 | PASS (unchanged) | Cases B, C, D, F.*.clean all PASS |
+| 5 | Hook self + `tests/fixtures/**` allowlisted | PASS (unchanged) | allowlist files unchanged; mirror `cmp` = 0 |
+| 6 | `PostToolUse` matcher is `Edit\|Write\|MultiEdit`, both hooks registered | PASS (unchanged) | `.claude/settings.json:104` still `"Edit\|Write\|MultiEdit"`; both hooks on L107–113 |
+| 7 | `templates/base/` byte-identical; `check-sync.sh` PASS | PASS | `cmp` on settings.json / hook / allowlist → 0/0/0. `./scripts/check-sync.sh` → `IDENTICAL: 107, DRIFTED: 0, ROOT_ONLY: 0, TEMPLATE_ONLY: 9, KNOWN_DIFF: 3`, final "PASS: all files in sync." |
+| 8 | 6 test cases all green | PASS (strengthened) | `HARNESS_VERIFY_MODE=test ./scripts/verify.local.sh` → 11/11 PASS (Case F expands to 3 tools × {clean, dirty}). Case E now works under a link set that genuinely lacks jq and has only the tools the hook needs — no more "accidentally passing because dirname was a shell builtin" risk |
+| 9 | `scripts/verify.local.sh` runs shellcheck → sh -n → jq -e → tests | PASS (reclassified, equivalent) | Execution order under `static`: shellcheck → `sh -n` (18 hooks) → `jq -e` × 2 → `check-sync.sh`. Under `test`: `tests/test-check-mojibake.sh`. Under `all`: static-block then test-block. Plan specified aggregation order; implementation now partitions it by mode per `docs/quality/quality-gates.md:26-27`. Order change: `check-sync.sh` is now classified as static (runs before hook tests in `all` mode). No coverage regression |
+| 10 | `./scripts/run-verify.sh` invokes `verify.local.sh`; all pass | PASS | `run-verify.sh:32–38` still invokes `./scripts/verify.local.sh`; exports `HARNESS_VERIFY_MODE`. `./scripts/run-static-verify.sh` → exit 0 (evidence saved to `docs/evidence/verify-2026-04-17-072117.log`) |
+| 11 | `check-sync.sh` PASS; repo-only files excluded | PASS (unchanged) | `IDENTICAL: 107, DRIFTED: 0, ROOT_ONLY: 0` |
+| 12 | Hook source has no U+FFFD literal | PASS (unchanged) | `printf '\357\277\275'` at runtime only; grep scan clean |
+| 13 | AGENTS.md repo map note | PASS (unchanged) | `AGENTS.md:66` still present; this commit does not touch AGENTS.md |
+
+**Delta verdict: 13/13 still PASS.** No acceptance criterion regresses. AC8 and AC9 are strengthened (Case E hardening + mode split alignment).
+
+### Delta static analysis
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `sh -n scripts/verify.local.sh` | OK | POSIX clean |
+| bash-ism scan on `verify.local.sh` (`[[`, `]]`, `<<<`, `$'...'`, `((`, `))`) | CLEAN | positional-parameter builder replaces the SC2086-disabled word-split; no bash syntax introduced |
+| `jq -e . < .claude/settings.json` | OK | matcher L119 now `"Bash\|Edit\|Write\|MultiEdit"` |
+| `jq -e . < templates/base/.claude/settings.json` | OK | mirror |
+| `cmp .claude/settings.json templates/base/.claude/settings.json` | exit 0 | byte identical |
+| `cmp` on hook + allowlist (root vs template) | exit 0, exit 0 | unchanged, still identical |
+| `./scripts/check-sync.sh` | PASS | `IDENTICAL: 107, DRIFTED: 0, ROOT_ONLY: 0, TEMPLATE_ONLY: 9, KNOWN_DIFF: 3` |
+| `HARNESS_VERIFY_MODE=static ./scripts/verify.local.sh` | exit 0 | shellcheck-skip + 18 `sh -n` + 2 `jq -e` + `check-sync.sh`. Does NOT run `tests/test-check-mojibake.sh` |
+| `HARNESS_VERIFY_MODE=test ./scripts/verify.local.sh` | exit 0 | runs ONLY `tests/test-check-mojibake.sh`. Output ends with `PASS: 11 / FAIL: 0` |
+| `HARNESS_VERIFY_MODE=all ./scripts/verify.local.sh` | exit 0 | static-block then test-block; same 11/11 PASS |
+| `HARNESS_VERIFY_MODE=bogus ./scripts/verify.local.sh` | exit 2 | stderr: `verify.local.sh: unknown HARNESS_VERIFY_MODE=bogus (expected static\|test\|all)` |
+| `./scripts/run-static-verify.sh` | exit 0 | full chain via `HARNESS_VERIFY_MODE=static exec ./scripts/run-verify.sh` |
+| `./scripts/run-test.sh` | exit 0 | sibling wrapper; test-scope and language `go test` (cached) all PASS. `/test` will re-run authoritatively |
+| Matcher symmetry probe | CLEAN | `grep -n matcher` on both settings files shows: `PostToolUse=Edit\|Write\|MultiEdit`, `PostToolUseFailure=Bash\|Edit\|Write\|MultiEdit`. Asymmetry (Codex P3) is closed |
+| Case E realistic-PATH probe | JQ_UNREACHABLE_IN_MINIMAL_PATH | Reproduced the link loop in a scratch dir: `jq` is NOT present; `dirname env ln test` are added without introducing `jq`. The jq-missing branch is still exercised |
+
+### Delta documentation drift
+
+| Doc / contract | In sync? | Notes |
+| --- | --- | --- |
+| `docs/quality/quality-gates.md:26-27` mode split contract | Now honored | `verify.local.sh` joins `packs/languages/_template/verify.sh` as a mode-aware verifier. `packs/languages/golang/verify.sh` still ignores mode (pre-existing repo-wide debt, out of this plan's scope per Non-goals) |
+| Plan AC list (L60–72) | STALE (same as prior verify) | Still `- [ ]`. Known item for `/sync-docs` or `/pr`. Not a blocker per `.claude/agent-memory/verifier/feedback_plan_ac_checklist_drift.md` — plan AC checkboxes routinely lag behind implementation |
+| Hook message text | unchanged | wording drift flagged in initial verify still applies; optional follow-up |
+| Triage report factual accuracy | Minor imprecision noted by re-self-review | The DISMISSED rationale in `docs/reports/codex-triage-mojibake-postedit-guard.md` undersells the value of the `dirname` hardening. Not a verify blocker; `/sync-docs` can consider rewording |
+| Commit message claims vs reality | Verified | Commit states "verify.local.sh all modes PASS, test-check-mojibake.sh 11/11 PASS, run-verify.sh all/static/test PASS." Re-run confirms all of these on 2026-04-17T07:22Z |
+
+### Delta observational checks
+
+- Matcher change is symmetric and minimal: 1-line diff × 2 files, mirror preserved. No JSON shape change.
+- `verify.local.sh` refactor is structural (function extraction + case dispatch) but preserves command coverage under `all`. Only the internal ordering of `check-sync.sh` vs `tests/test-check-mojibake.sh` has changed (check-sync now runs in the static block, tests in the test block). This is consistent with the documented split.
+- The positional-parameter refactor removes the `# shellcheck disable=SC2086` suppression, so once CI runs shellcheck again this file will lint clean without disables — a genuine quality improvement.
+- Case E link set extension cannot accidentally re-enable `jq`: `jq` is not in `dirname env ln test sh bash dash cat grep sed mkdir rm cd command pwd printf`, and the test still relies on `PATH="$minimal_path"` absence of `jq`. Verified by probe (see evidence log).
+
+### Delta coverage gaps (no new blockers)
+
+| Gap | Severity | Notes |
+| --- | --- | --- |
+| shellcheck (still not installed on verify host) | LOW | unchanged from prior verify. `verify.local.sh` wires shellcheck when present; CI remains the authoritative lint runner |
+| `packs/languages/golang/verify.sh` ignores `HARNESS_VERIFY_MODE` | LOW | pre-existing repo-wide debt, out of scope per plan Non-goals. Current `run-test.sh` therefore still runs the golang static checks AND go test as one bundle. Not a regression of this PR |
+| Real-session PostToolUse dispatch | UNVERIFIED | same as prior verify; belongs to `/test` walkthrough |
+
+### Re-verify verdict
+
+- **PASS (delta).**
+- All 13 plan acceptance criteria remain satisfied after 306b23a.
+- Codex ACTION_REQUIRED (P3 matcher symmetry) closed by a 1-line × 2-file change; symmetry verified by grep.
+- Codex WORTH_CONSIDERING (P2 mode split) implemented; all four mode paths (static / test / all / bogus) produce the documented exit codes.
+- Codex DISMISSED (P1) hardened rather than left false-positive; Case E now uses a minimal PATH that genuinely lacks `jq` and has only the tools the hook needs, so the test fails realistically if `dirname` is ever unavailable.
+- No CRITICAL, HIGH, or MEDIUM static-analysis finding. Only pre-existing LOW items remain (shellcheck-host-availability, plan AC checkbox drift, golang pack mode-ignoring), none blocking.
+- Re-self-review (appended to `docs/reports/self-review-mojibake-postedit-guard.md`) concurs: merge recommendation stands.
+
+### Verified (delta)
+
+- Byte-identical mirror of `.claude/settings.json` and `templates/base/.claude/settings.json` after the MultiEdit matcher fix.
+- `PostToolUse` and `PostToolUseFailure` matchers both contain `Bash\|Edit\|Write\|MultiEdit` on root and template (asymmetry closed).
+- `HARNESS_VERIFY_MODE` dispatch is strict (`static|test|all` accepted; anything else → exit 2) and mode-exclusive (static block does not run hook tests; test block does not run static checks).
+- `scripts/run-static-verify.sh` → exit 0 and `scripts/run-test.sh` → exit 0 at branch HEAD.
+- 11/11 test assertions pass in both `test` and `all` modes under a realistic link set.
+- No shellcheck `# shellcheck disable=SC2086` remains in `verify.local.sh`.
+
+### Likely but unverified (statically, delta)
+
+- Claude Code actually routes MultiEdit failures through the `PostToolUseFailure` matcher in a real session — the JSON wiring is correct, but end-to-end dispatch is Claude Code runtime behavior that only `/test`'s walkthrough can confirm.
+
+### Not verified (delta)
+
+- shellcheck on the updated `verify.local.sh` and `tests/test-check-mojibake.sh` (tool unavailable on host). CI should catch.
+
+### Minimal additional check to raise confidence (delta)
+
+The same real-session probe recommended in the initial verify, extended by one step: deliberately fail a `MultiEdit` (e.g., stale `old_string`) in a fresh session and confirm `.harness/state/tool_failures.count` increments. Before 306b23a, MultiEdit failures silently did not count; after, they should. If the count moves, the P3 fix is confirmed end-to-end. This is a `/test` walkthrough, not a static check.

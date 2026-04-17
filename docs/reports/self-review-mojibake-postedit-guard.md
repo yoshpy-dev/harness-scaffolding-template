@@ -72,3 +72,57 @@ _The first entry should be appended to `docs/tech-debt/README.md`. The second is
   4. Append the "temporary mitigation" entry to `docs/tech-debt/README.md` so the retirement trigger is tracked alongside other debt items.
 
 Hand off to `/verify` for spec-compliance + static-analysis (`./scripts/run-verify.sh` is reported green by the user; verifier should re-confirm all 13 acceptance criteria map to diff evidence).
+
+## Re-review after Codex fixes (commit 306b23a)
+
+- Date: 2026-04-17
+- Reviewer: reviewer subagent (Claude) — 2nd pass
+- Scope: commit 306b23a only (the Codex triage fix slice). Diff quality only.
+- Commit contents (per `git show 306b23a`): 5 files, +102/-36.
+  - `.claude/settings.json` + `templates/base/.claude/settings.json` (P3 ACTION_REQUIRED): `PostToolUseFailure` matcher `Bash|Edit|Write` → `Bash|Edit|Write|MultiEdit`.
+  - `scripts/verify.local.sh` (P2 WORTH_CONSIDERING): `HARNESS_VERIFY_MODE` branch (`static`/`test`/`all`) + positional-parameter accumulation replacing the `SC2086`-disabled word-split builder.
+  - `tests/test-check-mojibake.sh` (P1 hardening): Case E link set extended from `sh bash dash cat grep sed mkdir rm cd command pwd printf` to add `dirname env ln test`.
+  - `docs/reports/codex-triage-mojibake-postedit-guard.md`: new triage artifact.
+
+### Evidence gathered for the re-review
+
+- `cmp .claude/settings.json templates/base/.claude/settings.json` → exit 0 (byte-for-byte identical after the Codex fix). `ls -la` shows both files are 3.4k and have the same mtime.
+- `bash tests/test-check-mojibake.sh` → **11/11 PASS** (A, B, C, D, E, F.{edit,write,multiedit} × {clean,dirty}). No regression from the prior clean run.
+- `HARNESS_VERIFY_MODE=static bash scripts/verify.local.sh` → runs shellcheck-skip, `sh -n` on 18 hook scripts, `jq -e` on 2 settings.json files, `check-sync.sh`. Does NOT run `tests/test-check-mojibake.sh`. Exit 0.
+- `HARNESS_VERIFY_MODE=test bash scripts/verify.local.sh` → runs ONLY `tests/test-check-mojibake.sh`. Does NOT run `sh -n`, `jq -e`, or `check-sync.sh`. Exit 0.
+- `HARNESS_VERIFY_MODE=all bash scripts/verify.local.sh` → runs all static checks, then hook tests. Exit 0.
+- `HARNESS_VERIFY_MODE=bogus bash scripts/verify.local.sh` → emits `verify.local.sh: unknown HARNESS_VERIFY_MODE=bogus (expected static\|test\|all)` to stderr and exits 2 (the standard "misuse" code from `run()`-local `status=1` plus an explicit `exit 2`).
+- Mutual-exclusivity probe (grep on labeled output): static-mode output contains `sh -n`, `jq -e`, `scripts/check-sync.sh` but NOT `tests/test-check-mojibake.sh`; test-mode output contains only `tests/test-check-mojibake.sh`. No overlap, no leak.
+- `bash -n scripts/verify.local.sh` and `sh -n scripts/verify.local.sh` — both clean.
+- `scripts/run-static-verify.sh` (`HARNESS_VERIFY_MODE=static exec ./scripts/run-verify.sh "$@"`) and `scripts/run-test.sh` (`HARNESS_VERIFY_MODE=test exec ./scripts/run-verify.sh "$@"`) correctly wire the new mode contract end-to-end. `run-verify.sh` already read and exported `HARNESS_VERIFY_MODE` (line 8-9), so the plumbing is honored without further changes.
+- Link-set contamination probe for Case E: reproduced the `for tool in sh bash dash cat grep sed mkdir rm cd command pwd printf dirname env ln test; do ...` loop in a scratch directory and confirmed `jq` is NOT present in the resulting link set (ls of scratch dir contains no `jq` entry). The new additions `dirname env ln test` are all non-jq tools, so Case E still exercises the jq-missing branch as intended.
+- HOOK_REPO_ROOT override continues to be honored in Case E (the test sets `HOOK_REPO_ROOT="$alt_root"` on line 101), so the marker write target remains `$alt_root/.harness/state/mojibake-jq-missing` — safely inside `$workdir` and cleaned up by the trap. The fix from 1321cd0 (don't delete the real repo's marker) is not regressed by 306b23a.
+- The commit message claims `run-verify.sh all/static/test PASS` — I re-ran all three modes locally and confirm the claim.
+
+### Findings from the Codex fix slice
+
+| Severity | Area | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- | --- |
+| LOW | maintainability | In `verify.local.sh`, the order of internal static checks changed from (old) `1. shellcheck → 2. sh -n → 3. jq -e → 4. hook smoke tests → 5. check-sync` to (new) `static: 1. shellcheck → 2. sh -n → 3. jq -e → 4. check-sync` then `test: hook smoke tests`. The relative order of `check-sync` vs `hook smoke tests` is flipped in `all` mode (check-sync now runs before hook tests). This is a defensible reclassification (check-sync is static, hook tests are behavioral), and it is consistent with the documented mode split. However, the commit message does not call out the reorder. | `git show HEAD~1:scripts/verify.local.sh` vs `git show HEAD:scripts/verify.local.sh`, compared section numbers. | Not blocking. Consider a one-line note in the commit message or plan progress entry ("check-sync reclassified as static; now runs before hook tests in `all` mode") if someone diffs the ordering later. |
+| LOW | accuracy of triage rationale | The DISMISSED entry in `docs/reports/codex-triage-mojibake-postedit-guard.md` states that "HOOK_REPO_ROOT override bypasses the dirname-dependent REPO_ROOT derivation in the hook." This is slightly off — HOOK_REPO_ROOT bypasses the *fallback* in `REPO_ROOT="${HOOK_REPO_ROOT:-$(cd "$HOOK_DIR/../.." && pwd)}"`, but the preceding line `HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"` still requires `dirname` unconditionally. So Codex's factual claim that "dirname is needed" is actually correct — Case E was only passing because `dirname` happened to be available via the shell builtin probe or via the bash interpreter's internal resolution. The P1 hardening (linking `dirname` explicitly) is a real fix, not pure defense-in-depth. The triage wording understates the value of the hardening. | `.claude/hooks/check_mojibake.sh` L35-36; `docs/reports/codex-triage-mojibake-postedit-guard.md` DISMISSED column. | Not blocking (the code change is correct; only the rationale wording is imprecise). Optional: reword the triage DISMISSED row from "false-positive" to "accepted as hardening" so future readers don't conclude that `dirname` was never required. |
+
+Both findings are LOW. No CRITICAL/HIGH/MEDIUM.
+
+### Positive notes (Codex fix slice)
+
+- **Matcher symmetry restored**: `PostToolUse` and `PostToolUseFailure` matchers both now list `Bash|Edit|Write|MultiEdit`. The asymmetry introduced by the prior slice is fully resolved and both root+template files are byte-for-byte identical.
+- **Positional-parameter refactor is cleaner**: `set --` followed by `set -- "$@" "$f"` inside the glob loop removes the need for `# shellcheck disable=SC2086` and the unquoted `$hook_scripts` word-split. It also handles the empty-glob case via `[ "$#" -gt 0 ]` gating the run call. This addresses LOW finding #5 from the prior pass *and* Codex P2 in one change.
+- **Unknown-mode handling is strict and explicit**: `case "$mode" in static|test|all) ;; *) printf ... >&2; exit 2 ;; esac` rejects typos at the start of the script rather than silently running all checks. This is the right choice for a script that's invoked by orchestration (fail-fast on contract violations).
+- **Mode contract matches the documented split**: `scripts/run-static-verify.sh` and `scripts/run-test.sh` wrappers were already setting `HARNESS_VERIFY_MODE`, and `run-verify.sh` was already exporting it. The P2 fix completes the end-to-end plumbing without touching the wrappers — it was one missing link in the chain, now filled.
+- **Test still exercises the jq-missing branch**: I verified empirically that `jq` is NOT in the expanded link set (`dirname env ln test` are all non-`jq` tools), so the purpose of Case E (hook runs without jq, exits 0, writes marker) is preserved. The test's 11/11 PASS status confirms this.
+
+### Updated recommendation
+
+- **Merge**: YES.
+- **Blockers**: none (no CRITICAL, HIGH, or MEDIUM in either the initial slice or the Codex fix slice).
+- **Follow-ups** (non-blocking, LOW only):
+  - Prior LOW follow-ups 1 (cleanup scope) was addressed in commit 1321cd0.
+  - Prior LOW follow-up 5 (`$hook_scripts` word-split) was addressed in commit 306b23a via the positional-parameter refactor.
+  - New LOW findings above are documentation-quality notes, not code defects.
+
+The merge recommendation from the initial review stands, strengthened by the Codex fix slice: the PostToolUseFailure asymmetry is closed, the `HARNESS_VERIFY_MODE` contract is now implemented in the only verifier that honors a full mode split, and Case E is hardened with an explicit `dirname`/`env`/`ln`/`test` link set so we no longer depend on the test machine's shell-builtin resolution for `dirname`.

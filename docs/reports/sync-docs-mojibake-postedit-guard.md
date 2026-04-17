@@ -88,3 +88,45 @@ Two files updated in this pass:
 Everything else in the repo (product docs, harness docs, templates, rules, skills, scripts, quality gates) was already in sync because this diff is a narrow, additive, well-scoped mitigation. AGENTS.md and CLAUDE.md were intentionally not touched (per user instruction); the AGENTS.md one-line note was in place before `/sync-docs` ran.
 
 Proceed to `/codex-review` (optional) then `/pr`.
+
+## Re-sync-docs after Codex fixes (commit 306b23a)
+
+- Date: 2026-04-17
+- Trigger: Codex-review produced 1 ACTION_REQUIRED (P3 matcher symmetry), 1 WORTH_CONSIDERING (P2 mode split), 1 DISMISSED with hardening (P1). Fix commit `306b23a` applied all three; re-self-review kept MERGE verdict, re-verify kept PASS delta, re-test kept PASS (88 assertions). Per `post-implementation-pipeline.md`, `/sync-docs` must re-run even when only `/self-review` through `/test` re-ran.
+
+### Behavior changes in 306b23a that could touch docs
+
+1. **`PostToolUseFailure` matcher expanded** (`Bash|Edit|Write` → `Bash|Edit|Write|MultiEdit`) in both `.claude/settings.json` and `templates/base/.claude/settings.json`. Symmetric with the `PostToolUse` matcher already changed in the original slice.
+2. **`scripts/verify.local.sh` now honors `HARNESS_VERIFY_MODE`** (`static`/`test`/`all`). When `run-static-verify.sh` runs, `verify.local.sh` now executes only shellcheck/sh-n/jq/check-sync; when `run-test.sh` runs, it executes only `tests/test-check-mojibake.sh`. Default (`all`) is unchanged.
+
+### Docs checked and left unchanged
+
+| File | Lines checked | Result |
+| --- | --- | --- |
+| `docs/quality/quality-gates.md` | L23-28 (must-pass-locally gate list) | Description already refers to the wrappers generically — `run-static-verify.sh` "wrapper for `HARNESS_VERIFY_MODE=static ./scripts/run-verify.sh`" and `run-test.sh` "wrapper for `HARNESS_VERIFY_MODE=test ./scripts/run-verify.sh`". With 306b23a, `verify.local.sh` now honors the mode that `run-verify.sh` forwards, so the wrappers now actually deliver the documented split for the hook smoke tests. The text was already correct in intent; no edit needed. |
+| `docs/quality/definition-of-done.md` | Full file | `verify.local.sh` and `HARNESS_VERIFY_MODE` are not mentioned; DoD is pipeline-shaped, not script-enumerating. No edit needed. |
+| `README.md` | L104 | The single reference (`packs/languages/*/verify.sh` or `scripts/verify.local.sh`) treats `verify.local.sh` as a customization entry point at init time, with no behavior description to drift. No edit needed. |
+| `AGENTS.md`, `CLAUDE.md` | Per task instruction, not edited. | — |
+| `.claude/skills/loop/prompts/pipeline-verify.md`, `pipeline-test.md` | `HARNESS_VERIFY_MODE=static|test ./scripts/run-verify.sh` invocations | These were already the two callers that motivated the mode-respecting fix. The prompts stay identical; 306b23a makes their intent actually apply to `verify.local.sh`. No edit needed. |
+| `docs/reports/codex-triage-mojibake-postedit-guard.md` | Full file | Kept as the historical triage snapshot that drove commit 306b23a. Re-classifying P2 (WORTH_CONSIDERING) or the P3 table after-the-fact would rewrite history. The resolution is recorded here instead: **P3 resolved** by the matcher-symmetry fix (both `.claude/settings.json` lines now read `Bash|Edit|Write|MultiEdit`), **P2 resolved** by the `HARNESS_VERIFY_MODE` case block in `verify.local.sh` L20-27, **P1 hardened** by adding `dirname`/`env`/`ln`/`test` to the linked tool set in `tests/test-check-mojibake.sh` Case E (still DISMISSED as root-cause). |
+
+### Docs updated in this pass
+
+None. The two behavior changes in 306b23a are **narrow enough that no external doc copy described them specifically**:
+
+- The `PostToolUseFailure` matcher change is invisible at the docs layer — no document enumerates per-hook matchers beyond the settings.json itself.
+- The `HARNESS_VERIFY_MODE` support in `verify.local.sh` brings it into compliance with what `quality-gates.md:26-27` was already promising; the doc was aspirational before this fix, descriptive after.
+
+### Drift re-check against sync-docs SKILL.md checklist
+
+- **Skills added/removed/renamed**: none.
+- **Hooks added/removed**: none in 306b23a (only a matcher string changed inside existing `PostToolUseFailure` entry).
+- **Rules added/removed**: none.
+- **Language packs added/removed**: none.
+- **Scripts added/removed**: `verify.local.sh` content changed (not added/removed); no new script entrypoints.
+- **Quality gates changed**: Gate contract `HARNESS_VERIFY_MODE` is now actually honored by `verify.local.sh`. The doc text did not change; the runtime behavior now matches it.
+- **PR skill consistency**: pipeline order and pre-checks unchanged; `/pr` still reads the same four report types.
+
+### Conclusion
+
+Re-sync pass made **zero doc edits**. The prior sync-docs pass's conclusion ("Two files updated… everything else already in sync") still holds for the whole branch including 306b23a. Proceed to `/pr`.
