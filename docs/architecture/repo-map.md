@@ -42,7 +42,7 @@
 ## Extensions
 
 - `packs/languages/`: stack-specific rules and verification
-- `scripts/`: init (`init-project.sh`), bootstrap (`bootstrap.sh`), plan creation (`new-feature-plan.sh`, `new-ralph-plan.sh`), plan archival (`archive-plan.sh`), verification (`run-verify.sh`, `run-static-verify.sh`, `run-test.sh`), CI checks (`check-coverage.sh`, `check-pipeline-sync.sh`, `check-template.sh`), commit safety (`commit-msg-guard.sh`), language detection (`detect-languages.sh`), language pack creation (`new-language-pack.sh`), Ralph Loop orchestration (`ralph-loop.sh`, `ralph-loop-init.sh`, `ralph-status-helpers.sh`), pipeline orchestration (`ralph-pipeline.sh`, `ralph-orchestrator.sh`, `ralph-config.sh`, `ralph` CLI), Codex availability check (`codex-check.sh`)
+- `scripts/`: init (`init-project.sh`), bootstrap (`bootstrap.sh`), install one-liner (`install.sh`), plan creation (`new-feature-plan.sh`, `new-ralph-plan.sh`), plan archival (`archive-plan.sh`), verification (`run-verify.sh`, `run-static-verify.sh`, `run-test.sh`), CI checks (`check-coverage.sh`, `check-pipeline-sync.sh`, `check-sync.sh`, `check-template.sh`), commit safety (`commit-msg-guard.sh`), language detection (`detect-languages.sh`), language pack creation (`new-language-pack.sh`), Ralph Loop orchestration (`ralph-loop.sh`, `ralph-loop-init.sh`, `ralph-status-helpers.sh`), pipeline orchestration (`ralph-pipeline.sh`, `ralph-orchestrator.sh`, `ralph-config.sh`, `ralph` CLI), TUI build (`build-tui.sh`), Codex availability check (`codex-check.sh`)
 - `.github/workflows/`: CI checks (verify.yml, check-template.yml)
 
 ## Runtime state
