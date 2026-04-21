@@ -106,37 +106,62 @@ func runUpgrade(targetDir string, force bool) error {
 	}
 
 	installedPacks := oldManifest.Meta.Packs
+	availablePacks, err := scaffold.AvailablePacks()
+	if err != nil {
+		return fmt.Errorf("listing available packs: %w", err)
+	}
+	available := make(map[string]bool, len(availablePacks))
+	for _, p := range availablePacks {
+		available[p] = true
+	}
 
-	// Track pack entries that we fail to diff so we can preserve them verbatim
-	// in the new manifest instead of silently dropping them.
+	// Track pack entries whose diff could not be computed so a transient
+	// error does not permanently drop their tracking. Packs that have been
+	// removed from the template release are explicitly NOT preserved.
 	preservedPackEntries := make(map[string]scaffold.ManifestFile)
+	retainedPacks := make([]string, 0, len(installedPacks))
 
 	for _, pack := range installedPacks {
 		prefix := packPrefixFor(pack)
+
+		// Pack was removed or renamed in this release: drop manifest tracking
+		// and notify the user that the on-disk files are now unmanaged.
+		if !available[pack] {
+			fmt.Fprintf(os.Stderr, "Notice: pack %q no longer exists in templates — manifest tracking dropped (files on disk left untouched)\n", pack)
+			continue
+		}
+
 		packFS, pErr := scaffold.PackFS(pack)
 		if pErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: pack %s: %v\n", pack, pErr)
+			fmt.Fprintf(os.Stderr, "Warning: pack %s load failed: %v (preserving manifest entries)\n", pack, pErr)
 			preservePackEntries(oldManifest, prefix, preservedPackEntries)
+			retainedPacks = append(retainedPacks, pack)
 			continue
 		}
 		packDir := filepath.Join(absDir, "packs", "languages", pack)
 		packManifest := splitManifestForPack(oldManifest, pack)
-		packDiffs, pErr := upgrade.ComputeDiffsWithManifest(packManifest, packDir, packFS, false)
+		// checkRemovals=true: a file dropped from the pack template but still
+		// tracked in the manifest surfaces as ActionRemove (with the pack
+		// prefix re-applied below) so the user still sees the "removed from
+		// template" warning for genuine pack-file deletions.
+		packDiffs, pErr := upgrade.ComputeDiffsWithManifest(packManifest, packDir, packFS, true)
 		if pErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: pack %s diff failed: %v\n", pack, pErr)
+			fmt.Fprintf(os.Stderr, "Warning: pack %s diff failed: %v (preserving manifest entries)\n", pack, pErr)
 			preservePackEntries(oldManifest, prefix, preservedPackEntries)
+			retainedPacks = append(retainedPacks, pack)
 			continue
 		}
 		for i := range packDiffs {
 			packDiffs[i].Path = filepath.Join("packs", "languages", pack, packDiffs[i].Path)
 		}
 		diffs = append(diffs, packDiffs...)
+		retainedPacks = append(retainedPacks, pack)
 	}
 
 	var updated, skipped, notified int
 
 	manifest := scaffold.NewManifest(Version)
-	manifest.Meta.Packs = installedPacks
+	manifest.Meta.Packs = retainedPacks
 
 	// Carry over entries for packs we could not diff so a transient pack
 	// error does not permanently drop their tracking.
