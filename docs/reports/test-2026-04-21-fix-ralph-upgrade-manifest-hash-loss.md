@@ -361,3 +361,83 @@ All previously-green plan-targeted tests still PASS in Round 4 (verified from `/
 - Regressions: none
 
 **Tests remain green after the Round 3 Codex P2 follow-up fix (`AvailablePacks` failure no longer aborts `runUpgrade`). The new `TestRunUpgrade_SurvivesAvailablePacksFailure` passes, all prior-round targeted tests are regression-free, and `internal/cli` coverage improved by +0.9pp. Safe to proceed to `/sync-docs` → `/codex-review` (re-run) → `/pr`.**
+
+## Round 5 (post-codex-4)
+
+- Date: 2026-04-21
+- Commit under test: `ef8e3ed` ("fix(upgrade): avoid heal loop and prevent silent reintroduction overwrites")
+- Branch: `fix/ralph-upgrade-manifest-hash-loss`
+- Command: `go test ./... -count=1 -v`
+- Evidence: `docs/evidence/test-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round5.log` (749 lines)
+- Scope: Round 5 revalidates the Codex-4 follow-up fix (`ef8e3ed`) which closes two safety holes:
+  1. **Heal-loop guard** — when a manifest entry has an empty `OldHash` but the disk file differs from the template, the diff must be `ActionConflict` and carry `OldHash == newHash` (so the subsequent `applyDiffs` writes a non-empty hash instead of re-healing the same file on the next run).
+  2. **Reintroduction safeguard** — when a file is absent from the manifest but present on disk with content that differs from a newly-reintroduced template file, the diff must surface as `ActionConflict` instead of `ActionAdd` (prevents silent overwrite of a user's kept file when a later template release re-adds a previously-removed path).
+
+### Round 5 test execution
+
+| Suite / Command | Tests | Passed | Failed | Skipped | Duration |
+| --- | --- | --- | --- | --- | --- |
+| `go test ./... -count=1 -v` | 171 | 169 | 0 | 2 | ~3s wall (parallel packages) |
+
+### New / updated tests in this round (all PASS)
+
+| Test | Package | Status | Purpose |
+| --- | --- | --- | --- |
+| `TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers` (updated) | `internal/upgrade` | PASS (0.00s) | Now asserts `diffs[0].OldHash == HashBytes(template)` in addition to `Action == ActionConflict`. This pins the heal contract: the conflict resolution must write the new template hash into the manifest, not leave it empty (otherwise the next `upgrade` run would heal-loop the same file). Evidence: `log:710-711`. |
+| `TestComputeDiffs_AddBecomesConflictWhenDiskDiffers` (new) | `internal/upgrade` | PASS (0.00s) | Regression guard: a file absent from the manifest but present on disk with differing content must surface as `ActionConflict`, not `ActionAdd`. Without the fix in `ef8e3ed`, a template release that reintroduces a previously-removed path would silently overwrite the user's file. Evidence: `log:712-713`. |
+| `TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate` (new) | `internal/upgrade` | PASS (0.00s) | Complementary case to the safeguard: if the disk file already matches the new template byte-for-byte, the diff must remain `ActionAdd` (no spurious conflict prompt). This ensures the new safeguard does not over-trigger on benign re-adds. Evidence: `log:714-715`. |
+
+### Plan-targeted regression tests (all PASS)
+
+| Test | Package | Round 5 status |
+| --- | --- | --- |
+| `TestComputeDiffs_Skip_PreservesHash` | `internal/upgrade` | PASS |
+| `TestComputeDiffsWithManifest_PackPrefixedSubset` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_HealsEmptyHash_WhenDiskMatchesTemplate` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_AutoUpdate` / `_Conflict` / `_AddNewFile` / `_RemoveFile` | `internal/upgrade` | PASS (all four) |
+| `TestRunUpgrade_AutoUpdate` | `internal/cli` | PASS |
+| `TestRunUpgrade_SameVersionIsIdempotent` | `internal/cli` | PASS |
+| `TestRunUpgrade_HealsCorruptedManifest` | `internal/cli` | PASS |
+| `TestRunUpgrade_DropsPacksRemovedFromTemplates` | `internal/cli` | PASS |
+| `TestRunUpgrade_ReportsDeletedPackFileOnceThenDrops` | `internal/cli` | PASS |
+| `TestRunUpgrade_SurvivesAvailablePacksFailure` | `internal/cli` | PASS |
+
+### Package breakdown (Round 5)
+
+| Package | Result | Duration |
+| --- | --- | --- |
+| `internal/action` | ok | 2.364s |
+| `internal/cli` | ok | 0.605s |
+| `internal/config` | ok | 0.523s |
+| `internal/scaffold` | ok | 0.893s |
+| `internal/state` | ok | 1.604s |
+| `internal/ui` | ok | 1.260s |
+| `internal/ui/panes` | ok | 1.858s |
+| `internal/upgrade` | ok | 1.073s |
+| `internal/watcher` | ok | 2.340s |
+| root, `cmd/ralph`, `cmd/ralph-tui` | no test files | — |
+
+### Coverage (Round 5)
+
+- `internal/upgrade`: **82.0%** (+1.1pp vs. Round 4's 80.9% — the two new `AddBecomesConflict` / `AddStaysAdd` cases exercise the previously-uncovered `ActionAdd` disk-vs-template comparison branch in `ComputeDiffsWithManifest`)
+- `internal/cli`: **32.5%** (unchanged vs. Round 4 — no new `internal/cli` tests this round)
+
+### Skipped (unchanged)
+
+`TestBaseFS_WithMockFS` and `TestAvailablePacks_WithMockFS` in `internal/scaffold` — pre-existing placeholder skips, unrelated to this change.
+
+### Round 5 totals
+
+- Total: 171
+- Passed: 169
+- Failed: 0
+- Skipped: 2
+
+### Round 5 verdict
+
+- Pass: yes
+- Fail: no
+- Blocked: no
+- Regressions: none
+
+**Tests remain green after the Codex-4 follow-up fix (`ef8e3ed`). All three new/updated assertions (`AddBecomesConflictWhenDiskDiffers`, `AddStaysAddWhenDiskMatchesTemplate`, and the `OldHash` assertion in `EmptyHashConflictsWhenDiskDiffers`) pass; all prior-round targeted tests are regression-free; `internal/upgrade` coverage improved by +1.1pp. Safe to proceed to `/sync-docs` → `/codex-review` (re-run) → `/pr`.**

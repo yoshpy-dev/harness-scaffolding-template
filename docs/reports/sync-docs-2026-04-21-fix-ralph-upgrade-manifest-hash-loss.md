@@ -132,3 +132,36 @@ Spec bullet added for `ActionRemove` manifest drop behavior. No remaining doc dr
 ### Round 4 verdict
 
 Third pack-failure taxon (enumeration failure) now documented alongside transient per-pack failure and release-removed drop. Spec and implementation aligned on all three failure paths. No remaining doc drift identified by Verify Round 4. Ready for re-run of `/codex-review` and `/pr`.
+
+## Round 5 (post-codex-4)
+
+- Date: 2026-04-21
+- Trigger: Verify Round 5 flagged one remaining spec drift in `docs/specs/2026-04-16-ralph-cli-tool.md` near line 289 (`#### 冪等性と自動修復` subsection). The subsection covered same-version idempotency, empty-hash heal, pack namespacing, pack transient-vs-drop failure taxa, enumeration failure, and `ActionRemove` drop — but did not document the `ActionAdd` reintroduction safeguard landed on this branch. Without this bullet, the spec implied `ActionAdd` always overwrites the target path silently, which no longer matches implementation.
+- Commit anchor: `ef8e3ed` (`fix(upgrade): avoid heal loop and prevent silent reintroduction overwrites`) — Codex Round 4 Finding 7 (P2). A follow-up symmetry fix in the same commit also set `OldHash=newHash` in the empty-hash heal-conflict branch (Finding 6 [P2]) so a non-interactive skip adopts the template as the new baseline instead of rewriting the manifest with an empty hash. The heal symmetry fix is a refinement of the already-documented empty-hash heal bullet (line 289) rather than a new behavior, so the existing wording still holds and needs no edit.
+
+### Files updated
+
+| File | Change | Reason |
+| --- | --- | --- |
+| `docs/specs/2026-04-16-ralph-cli-tool.md` (new bullet appended to `#### 冪等性と自動修復` subsection, after the `ActionRemove` drop bullet) | Added `再導入ファイルの安全側判定 (reintroduction safeguard)` bullet: when the old manifest does not track a path but the file exists on disk, classify as `ActionAdd` only if disk content matches the template; otherwise emit `ActionConflict` and prompt. Guards against silent overwrite of locally-retained user content when a previously-removed file is reintroduced by a later release. | Commit `ef8e3ed` changed `internal/upgrade/diff.go` so `ActionAdd` peeks at on-disk content before classifying. Previously an old-manifest-absent + disk-present + template-reintroduced path was always `ActionAdd`, silently overwriting local edits. The user-facing contract (prompt on diverged disk content, safe add only when disk is missing or matches template) now needs to be codified so callers and reviewers understand the `ActionAdd` pre-conditions. |
+
+### Scope discipline
+
+- Only the single targeted bullet was appended under the existing `#### 冪等性と自動修復` subsection. All prior bullets (same-version idempotency, empty-hash heal, pack namespacing, pack transient-vs-drop, enumeration failure, `ActionRemove` drop) were not touched.
+- Heal-conflict `OldHash=newHash` symmetry fix (Finding 6) is an implementation-level refinement of the already-documented "empty-hash heal" bullet — the external contract ("heal when disk matches template; prompt when it differs") is unchanged, so no spec rewording is required.
+- No implementation or test files modified.
+- `AGENTS.md` / `CLAUDE.md` / `README.md` / `docs/recipes/*` / `.claude/rules/*` / `docs/quality/*` untouched — the reintroduction safeguard is a refinement of the existing `ActionAdd` action classification inside `internal/upgrade/diff.go`, not a new public surface. The `internal/upgrade/` repo-map description in `AGENTS.md` ("hash-based diff engine, conflict resolution (auto-update, conflict, add, remove)") still accurately names the action set; the safeguard is a guard on when `add` vs `conflict` fires.
+
+### Evidence
+
+- Commit `ef8e3ed` diff:
+  - `internal/upgrade/diff.go` — `ActionAdd` branch now reads disk before emitting; returns `ActionConflict` when disk content diverges from the template, `ActionAdd` when disk is missing or matches.
+  - `internal/upgrade/diff.go` — heal-conflict branch sets `OldHash = newHash` so the non-interactive skip rewrites the manifest with the template hash (prevents the re-conflict-every-run loop).
+- Test coverage anchors in `internal/upgrade/diff_test.go`:
+  - `TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers` updated to assert the `OldHash == newHash` invariant on the heal-conflict case.
+  - `TestComputeDiffs_AddBecomesConflictWhenDiskDiffers` — reintroduction-with-local-edits path yields `ActionConflict`.
+  - `TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate` — reintroduction where disk already matches template yields `ActionAdd` (no needless prompt).
+
+### Round 5 verdict
+
+Reintroduction-safeguard bullet added for `ActionAdd` disk-peek classification. Heal-conflict symmetry fix confirmed as covered by the existing empty-hash heal bullet. Spec and implementation aligned on all `ActionAdd` / `ActionConflict` / `ActionSkip` / `ActionRemove` pre-conditions. No remaining doc drift identified by Verify Round 5. Ready for re-run of `/codex-review` and `/pr`.

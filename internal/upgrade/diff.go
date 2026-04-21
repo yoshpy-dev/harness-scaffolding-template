@@ -84,11 +84,14 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 		if !inManifest {
 			// New file not in manifest. If disk has something different,
 			// surface as a conflict so the user is asked rather than
-			// silently overwritten.
+			// silently overwritten. OldHash=newHash mirrors the empty-hash
+			// heal contract: skip writes the template hash into the
+			// manifest so the next upgrade resolves cleanly.
 			if diskErr == nil && diskHash != newHash {
 				diffs = append(diffs, FileDiff{
 					Path:       path,
 					Action:     ActionConflict,
+					OldHash:    newHash,
 					DiskHash:   diskHash,
 					NewHash:    newHash,
 					NewContent: content,

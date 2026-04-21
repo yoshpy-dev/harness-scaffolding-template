@@ -293,6 +293,7 @@ Checking for updates...
   - *release で削除された pack（explicit drop）*: pack が `scaffold.AvailablePacks()` に存在しない（リリースで削除・改名された）場合、マニフェスト追跡は明示的にドロップされ、`Meta.Packs` からも外れる。ディスク上のファイルはそのまま残され、`Notice: pack "<pack>" no longer exists in templates — manifest tracking dropped (files on disk left untouched)` が stderr に出力される。
   - *pack 列挙自体の失敗（enumeration failure）*: pack 列挙 (`scaffold.AvailablePacks()`) 自体が失敗した場合は、Warning を stderr に出しつつ全 installed pack エントリを preservation 扱いにし、base ファイルの upgrade は継続する。pack メタデータ不具合で base 更新が止まることはない。
 - **`ActionRemove` 後のマニフェスト・ドロップ**: `ActionRemove` 後、マニフェストから該当エントリが削除される。「review and delete manually」の通知は 1 回のみで、同一バージョン再実行しても再通知されない。base ファイルの削除にも同じ扱いが適用される。
+- **再導入ファイルの安全側判定 (reintroduction safeguard)**: 旧マニフェストに存在せず、かつディスクに同名ファイルが存在する場合、ディスク内容がテンプレートと一致すれば `ActionAdd`、異なれば `ActionConflict` としてユーザに確認を求める。以前のリリースで削除されたファイルをユーザが手元で保持しておき、後のリリースで再導入された際にローカル編集が無言で上書きされるのを防ぐためのガード。
 
 ## セキュリティ考慮事項
 

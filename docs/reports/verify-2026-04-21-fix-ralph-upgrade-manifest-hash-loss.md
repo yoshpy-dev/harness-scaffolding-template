@@ -344,3 +344,98 @@ No code-level blockers. Proceed to `/test`. Before `/pr`, `/sync-docs` should ad
 
 - Raw Round 4 verification output: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round4.log`
 - This report (updated in-place): `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md`
+
+## Round 5 (post-codex-4)
+
+- Date: 2026-04-21
+- Trigger: Re-verify after commit `ef8e3ed` ("fix(upgrade): avoid heal loop and prevent silent reintroduction overwrites") addressed two Round 4 Codex P2 findings:
+  - Finding 6: empty-hash + user-edit `ActionConflict` carried `OldHash=""`, so a non-interactive `skip` rewrote the manifest with an empty hash and re-conflicted forever on same-version runs.
+  - Finding 7: `ActionAdd` did not inspect on-disk content, so a file removed in one release and reintroduced in a later release silently overwrote the user's local copy.
+- Scope: confirm the two new behaviors (heal-conflict `OldHash=newHash`; disk-aware `ActionAdd → ActionConflict`) are spec-consistent; re-run static analysis; flag spec drift for `/sync-docs`.
+- Verifier: verifier subagent (Claude Code).
+
+### What changed since Round 4
+
+Commit `ef8e3ed` (3 files, +102/-8):
+
+1. **`internal/upgrade/diff.go:76-105`** — `ComputeDiffsWithManifest` now peeks the disk state *before* the `inManifest` branch so the "new file" path can distinguish a safe add (disk missing or disk content matches template) from a potentially overwriting add (disk has different content). When the disk differs, emit `ActionConflict` instead of `ActionAdd`, with `DiskHash` / `NewHash` / `NewContent` populated so the conflict UI can render a diff.
+2. **`internal/upgrade/diff.go:134-149`** — In the empty-hash heal branch, when disk content differs from the new template, the emitted `ActionConflict` now carries `OldHash = newHash` instead of `OldHash = mf.Hash` (which was `""`). The comment records the rationale: a non-interactive `skip` will rewrite the manifest with a real hash via `d.OldHash`, ending the perpetual-conflict loop.
+3. **`internal/upgrade/diff_test.go`** — `TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers` tightened to assert `diffs[0].OldHash == scaffold.HashBytes(template)` (the heal contract). Two new tests added: `TestComputeDiffs_AddBecomesConflictWhenDiskDiffers` (reintroduction safeguard) and `TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate` (no-op re-add still fires `ActionAdd`).
+
+No acceptance criteria were added — the commit narrows two latent safety holes in the existing diff taxonomy without changing the public contract.
+
+### Deterministic checks re-run
+
+| Command | Result | Evidence |
+| --- | --- | --- |
+| `./scripts/run-verify.sh` | `EXIT=0` | All shell/hook syntax checks, settings.json jq parse (root + `templates/base/`), check-sync (107 identical / 0 drifted / 0 root-only), mojibake tests (11/11 PASS), golang verifier (`gofmt` ok, `go vet` 0 issues, `go test ./...` all packages PASS incl. `internal/cli` and `internal/upgrade`). Evidence: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round5.log` |
+| `go vet ./...` | `EXIT=0` | No output |
+| `gofmt -l internal/` | `EXIT=0` | No output (0 files flagged) |
+| `git status` | clean | Working tree clean; branch 7 commits ahead of origin, expected |
+
+### Spec-consistency of the two new behaviors
+
+#### (A) Heal-conflict `OldHash = newHash` invariant
+
+- Code: `internal/upgrade/diff.go:140-147` — when `mf.Hash == "" && diskHash != newHash`, emit `ActionConflict{ OldHash: newHash, DiskHash, NewHash, NewContent }`.
+- Test: `TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers` (`diff_test.go:231-258`) now asserts `diffs[0].OldHash == scaffold.HashBytes(template)`.
+- Spec cross-check: `docs/specs/2026-04-16-ralph-cli-tool.md:289` describes the heal behavior at "disk matches → ActionSkip; disk differs → ActionConflict" level. The internal `OldHash = newHash` invariant is an implementation detail that **does not surface in user-visible output** — the user sees the same conflict prompt either way. The skip-path manifest-write side-effect is downstream bookkeeping.
+- Verdict: **spec-consistent, no drift**. The spec line 289 contract ("`hash = ''` 破損マニフェストが 1 回の同一バージョン `ralph upgrade` で回復する") is actually *strengthened* by this fix — previously the heal broke in the disk-differs + non-interactive-skip case (perpetual loop), now it heals uniformly. No new user-visible contract surface; no new spec wording needed for this leg.
+
+#### (B) Disk-aware `ActionAdd → ActionConflict` (reintroduction safeguard)
+
+- Code: `internal/upgrade/diff.go:84-105` — for files **not in the old manifest** but **present on disk with different content**, emit `ActionConflict` instead of `ActionAdd`.
+- Tests: `TestComputeDiffs_AddBecomesConflictWhenDiskDiffers` (`diff_test.go:266-287`) and `TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate` (`diff_test.go:291-310`).
+- Spec cross-check: `docs/specs/2026-04-16-ralph-cli-tool.md` currently documents the conflict taxonomy as:
+  - line 131: `**コンフリクト解決**: 未編集→自動上書き、編集済み→選択UI（atlas/CRA方式）`
+  - line 271: example output shows `modified locally` triggering the `[o]verwrite / [s]kip / [d]iff` prompt.
+
+  Both framings assume the file is **tracked in the old manifest**. Neither covers the reintroduction case (manifest-untracked-but-disk-present), where the user has no reason to expect a conflict prompt.
+- **New observable contract surface**: running `ralph upgrade` can now produce a conflict prompt for a path that was not in the previous manifest. This is behaviorally distinct from "modified locally" — conceptually it is "new file in template but disk has different content". Users may reasonably ask what causes this new category of prompt.
+- Verdict: **spec drift (MINOR, non-blocking)**. The idempotency/heal block at lines 286-295 already documents subtle edge cases at "what the user sees" level (heal, pack preservation vs drop, enumeration fallback). The reintroduction safeguard is the same kind of edge case — a user-facing prompt that the spec does not explain. Recommend `/sync-docs` add a one-line bullet here.
+
+### Drift assessment — does this belong in the public spec?
+
+Unlike Round 4's `AvailablePacks` fallback (internal resilience, but with a user-visible stderr line), the Round 5 change produces a **user-facing conflict prompt** in a scenario the spec does not cover. Per `feedback_user_visible_stderr_belongs_in_spec.md`, user-visible behavior is contract even when the underlying cause is internal. A conflict prompt is even more user-visible than a stderr Warning, so:
+
+**Verdict: one sentence belongs in the spec for (B); (A) is fine as-is.**
+
+**Recommended one-liner for `/sync-docs`** (append as a new sub-bullet under `#### 冪等性と自動修復`, next to the heal bullet at line 289):
+
+> - **再導入ファイルの安全側判定 (reintroduction safeguard)**: 旧マニフェストに存在せず、かつディスクに同名ファイルが存在する場合、ディスク内容がテンプレートと一致すれば従来どおり `ActionAdd`（自動上書き相当、内容は同じ）、異なれば `ActionConflict` として扱いユーザーに確認を求める。これは以前のリリースで削除されたファイルをユーザーが手元で保持しておき、後のリリースで再導入された際に、ローカル編集が無言で上書きされるのを防ぐためのガード。
+
+No drift in `AGENTS.md`, `CLAUDE.md`, `README.md`, or `docs/recipes/*` — the reintroduction category is narrow and belongs in the CLI spec alone.
+
+### Spec compliance re-check
+
+All Round 1 ACs remain Verified; the Round 5 change only narrows two safety holes without altering the stated acceptance contract.
+
+- AC1 (same-version idempotency): strengthened — heal path no longer loops forever on non-interactive skip, so `runUpgrade` under the empty-hash + disk-edit fixture now terminates with a healed manifest.
+- AC2 (no empty-hash manifest entries post-upgrade): still Verified (AC2 is about the `ActionSkip` path; the new `OldHash=newHash` in the conflict path routes through skip-resolution on the caller side).
+- AC3 (heal in 1 same-version run): strengthened on the disk-differs subcase; disk-matches subcase unchanged.
+- AC4–AC8: unchanged; no regression.
+
+### Coverage gaps (non-blocking, for `/test` awareness)
+
+- `TestComputeDiffs_AddBecomesConflictWhenDiskDiffers` asserts `Action == ActionConflict` but does not check `DiskHash` / `NewHash` / `NewContent` are populated for UI rendering. Lowest-cost addition would be 3 field checks; not a blocker because the struct-literal initializer keeps them in lockstep with the other conflict branches.
+- No end-to-end `runUpgrade` test exercises the reintroduction path (only the unit-level `ComputeDiffsWithManifest` test). The one-file variant would verify the conflict actually surfaces through the CLI prompt plumbing (`internal/cli/upgrade.go`) and not just at the diff layer. Structurally symmetric with the tracked-conflict path; low risk.
+- Heal-conflict `OldHash=newHash` is asserted at the diff level but not via a `runUpgrade` round-trip that proves the perpetual-loop is actually broken on a non-interactive skip (would require closing stdin and asserting the second run produces no conflicts). The Round 1 `TestRunUpgrade_HealsCorruptedManifest` covers the disk-matches heal; the disk-differs heal is unit-only.
+
+### Smallest useful additional check
+
+A `TestRunUpgrade_HealsEmptyHashAfterSkipOnDiskDiff` integration test: init → corrupt manifest to `hash=""` + write user-edited file content → run `runUpgrade` with closed stdin (forces non-interactive skip) → assert no error → run `runUpgrade` again → assert second run produces no conflict (heal loop is closed). One fixture, two calls, ~30 lines. This would lock in the Finding 6 contract end-to-end, independent of the unit-level `OldHash` assertion.
+
+### Round 5 verdict
+
+- **Verified**: `run-verify.sh` EXIT=0; `go vet ./...` clean; `gofmt -l internal/` clean (0 files); three new/updated tests green inside the golang verifier's `go test ./...` run (`TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers`, `TestComputeDiffs_AddBecomesConflictWhenDiskDiffers`, `TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate`); all prior Rounds' ACs remain Verified; heal-loop and reintroduction safeguards compile cleanly and are exercised at unit level.
+- **Likely but unverified**: end-to-end runUpgrade behavior under (a) non-interactive skip of heal-conflict (no regression test closes the loop at CLI layer); (b) reintroduction conflict surfacing through the CLI prompt (diff-level only). Low risk — both paths reuse the existing conflict plumbing.
+- **Documentation drift (new, minor)**: `docs/specs/2026-04-16-ralph-cli-tool.md` does not cover the reintroduction safeguard `ActionAdd → ActionConflict` category. The heal-conflict `OldHash=newHash` invariant is an internal implementation detail and needs no spec entry. Flag for `/sync-docs`: add one sub-bullet under `#### 冪等性と自動修復` near line 289 as described above.
+
+**Overall Round 5 verdict: PASS (with minor doc-drift flag for `/sync-docs`)**
+
+No code-level blockers. Proceed to `/test`. Before `/pr`, `/sync-docs` should add the one-line reintroduction-safeguard bullet to the spec's idempotency section.
+
+### Round 5 artifacts
+
+- Raw Round 5 verification output: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round5.log`
+- This report (updated in-place): `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md`

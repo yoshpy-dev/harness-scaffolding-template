@@ -285,9 +285,16 @@ func TestComputeDiffs_AddBecomesConflictWhenDiskDiffers(t *testing.T) {
 	if diffs[0].Action != ActionConflict {
 		t.Fatalf("action = %d, want ActionConflict (reintroduction safeguard)", diffs[0].Action)
 	}
+	wantHash := scaffold.HashBytes([]byte("new template version"))
+	if diffs[0].OldHash != wantHash {
+		t.Errorf("OldHash = %q, want newHash %q (one-run convergence contract)", diffs[0].OldHash, wantHash)
+	}
+	if diffs[0].NewHash != wantHash {
+		t.Errorf("NewHash = %q, want %q", diffs[0].NewHash, wantHash)
+	}
 }
 
-// Ada: if the disk file already matches the new template, ActionAdd is safe
+// Safe-add: if the disk file already matches the new template, ActionAdd is safe
 // (no conflict prompt needed). This covers the no-op re-add case.
 func TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate(t *testing.T) {
 	dir := t.TempDir()
