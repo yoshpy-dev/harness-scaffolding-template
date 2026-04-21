@@ -358,6 +358,54 @@ func TestRunUpgrade_ReportsDeletedPackFileOnceThenDrops(t *testing.T) {
 	}
 }
 
+// Regression (round 3 codex): if scaffold.AvailablePacks() fails (e.g. the
+// embedded template FS has no templates/packs directory), runUpgrade must
+// still complete for base files and preserve installed pack manifest
+// entries, not abort with an error.
+func TestRunUpgrade_SurvivesAvailablePacksFailure(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: []string{"golang"}}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// Swap embedded FS to one that has no templates/packs directory at all —
+	// AvailablePacks() will error on ReadDir.
+	scaffold.EmbeddedFS = fstest.MapFS{
+		"templates/base/AGENTS.md":             {Data: []byte("# AGENTS\n")},
+		"templates/base/CLAUDE.md":             {Data: []byte("# CLAUDE\n")},
+		"templates/base/ralph.toml":            {Data: []byte("[pipeline]\nmodel = \"test\"\n")},
+		"templates/base/.claude/settings.json": {Data: []byte("{}\n")},
+	}
+	t.Cleanup(func() { setupTestEmbedFS(t) })
+
+	if err := runUpgrade(dir, false); err != nil {
+		t.Fatalf("upgrade should not abort on AvailablePacks failure: %v", err)
+	}
+
+	// Manifest must still track golang pack entries (preservation path).
+	m, err := scaffold.ReadManifest(filepath.Join(dir, ".ralph", "manifest.toml"))
+	if err != nil {
+		t.Fatalf("ReadManifest: %v", err)
+	}
+	golangReadme := filepath.Join("packs", "languages", "golang", "README.md")
+	if _, ok := m.Files[golangReadme]; !ok {
+		t.Errorf("pack entry %s dropped after AvailablePacks failure — expected preservation", golangReadme)
+	}
+	found := false
+	for _, p := range m.Meta.Packs {
+		if p == "golang" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("golang missing from Meta.Packs after AvailablePacks failure")
+	}
+}
+
 func TestRunDoctor_Passes(t *testing.T) {
 	setupTestEmbedFS(t)
 	Version = "0.1.0-test"

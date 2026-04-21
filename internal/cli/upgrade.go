@@ -106,20 +106,30 @@ func runUpgrade(targetDir string, force bool) error {
 	}
 
 	installedPacks := oldManifest.Meta.Packs
-	availablePacks, err := scaffold.AvailablePacks()
-	if err != nil {
-		return fmt.Errorf("listing available packs: %w", err)
-	}
-	available := make(map[string]bool, len(availablePacks))
-	for _, p := range availablePacks {
-		available[p] = true
-	}
+	availablePacks, apErr := scaffold.AvailablePacks()
 
 	// Track pack entries whose diff could not be computed so a transient
 	// error does not permanently drop their tracking. Packs that have been
 	// removed from the template release are explicitly NOT preserved.
 	preservedPackEntries := make(map[string]scaffold.ManifestFile)
 	retainedPacks := make([]string, 0, len(installedPacks))
+
+	// If pack enumeration failed, treat it as a transient error: preserve
+	// every installed pack's entries and skip per-pack diffing rather than
+	// aborting the entire upgrade (which would block base-file updates over
+	// a pack-metadata issue).
+	if apErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: unable to list available packs: %v (preserving installed pack entries)\n", apErr)
+		for _, pack := range installedPacks {
+			preservePackEntries(oldManifest, packPrefixFor(pack), preservedPackEntries)
+			retainedPacks = append(retainedPacks, pack)
+		}
+		installedPacks = nil // skip the per-pack loop below
+	}
+	available := make(map[string]bool, len(availablePacks))
+	for _, p := range availablePacks {
+		available[p] = true
+	}
 
 	for _, pack := range installedPacks {
 		prefix := packPrefixFor(pack)

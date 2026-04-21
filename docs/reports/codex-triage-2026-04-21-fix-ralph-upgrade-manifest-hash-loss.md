@@ -59,4 +59,17 @@ Categories: false-positive, already-addressed, style-preference, out-of-scope, c
 |---|---------------|------------------|-------------------|
 | 4 | [P2] Normalize pack manifest keys in tests for Windows — `internal/cli/cli_test.go:181-182`. テストが `"packs/languages/golang/README.md"` のようにスラッシュで直書きしているが、`executeInit` は `filepath.Join` で manifest キーを作るので Windows では `\` 区切りになり lookup が失敗する。| 実装側は `splitManifestForPack` が `filepath.ToSlash` で正規化済みで正しく動作する。テストの portability だけの問題。CI が Linux/macOS しか回っていない現状で regression 相当ではなく WORTH_CONSIDERING。ただし `filepath.Join` へ書き換えるのは 5 行・低リスクなので同時に直しても良い。Axis1=Debatable, Axis2=Debatable。| `internal/cli/cli_test.go:182, 265, 269, 282, 298, 319, 323` |
 
+---
+
+## Round 3 (post-6f038de)
+
+- Codex findings: 1 (P2)
+- After triage: ACTION_REQUIRED=1, WORTH_CONSIDERING=0, DISMISSED=0
+
+### ACTION_REQUIRED
+
+| # | Codex finding | Triage rationale | Affected file(s) |
+|---|---------------|------------------|-------------------|
+| 5 | [P2] Don't abort the whole upgrade when pack listing fails — `internal/cli/upgrade.go:109-111`. `scaffold.AvailablePacks()` が error を返すと `runUpgrade` が base 差分を書き込まずに即 return。以前はどんな pack 関連エラーも warning 降格で base upgrade は継続していた。私の Finding 2 fix で新たに導入した abort パス。| 真の regression（Round 2 で新規に導入したもの）。production では `embed.FS.ReadDir` が失敗する可能性は極小だが、テスト注入 FS や将来の embed 構造変更で発火し得る。修正方針: error を warn に降格し、availablePacks が得られない場合は全 pack エントリを preservation 扱いにして base upgrade を継続する（transient fallback 相当）。Axis1=Yes, Axis2=Yes。修正は 5 行程度。| `internal/cli/upgrade.go:109-116` |
+
 
