@@ -287,8 +287,10 @@ Checking for updates...
 
 - **同一バージョン冪等性**: 同じバージョン間 (`X.Y.Z → X.Y.Z`) で `ralph upgrade` を複数回実行しても、未編集ファイルは `modified locally` / `removed from template` / `new file` のいずれにも表示されず、内部的に `ActionSkip` として処理される。`ActionSkip` は新しい sha256 ハッシュ (`NewHash`) を保持するため、マニフェストの `hash` フィールドは常に最新テンプレートのハッシュに揃う。
 - **空ハッシュ自動修復 (heal)**: マニフェストエントリが `hash = ''` で壊れている場合でも、ディスク上の内容がテンプレートと一致するなら `ActionSkip` として扱い、対話プロンプトなしでハッシュを復旧する。ディスクが異なる場合のみ従来どおり `ActionConflict` となり、ユーザー確認を求める。`--force` や `--repair` フラグは不要で、通常の `ralph upgrade` 1 回で回復する。
-- **pack の名前空間化**: 言語パックのファイルはマニフェスト上で `packs/languages/<pack>/<rel>` としてキー付けされる。diff 計算は base（`packs/languages/` 外）と pack ごとの 2 段階で独立に走り、base の removal sweep が pack ファイルを「削除」と誤判定することはない。pack 側は `checkRemovals=false` で計算し、同一ファイルが `removed from template` と `new file` の両方に現れることはない。
-- **pack diff 失敗時のエントリ保持**: pack の埋め込み FS ロードや diff 計算が失敗した場合、その pack に対応する旧マニフェストのエントリは新マニフェストへそのままコピーされ、追跡情報は失われない（警告は stderr に出力）。これにより pack が一時的に利用不可能でも、既存エントリが消えて再生成扱いになることを防ぐ。
+- **pack の名前空間化**: 言語パックのファイルはマニフェスト上で `packs/languages/<pack>/<rel>` としてキー付けされる。diff 計算は `splitManifestForBase`（`packs/languages/` 配下を除外）と pack ごとに名前空間を剥いだ `splitManifestForPack` の 2 段階で独立に走る。base スコープ側には pack のキーが渡らないため base の removal sweep が pack ファイルを「削除」と誤判定することはなく、pack スコープ側にはそのパック以外のキーが渡らないため pack 側の add sweep が他 pack のファイルを「新規」と誤判定することもない。pack スコープでも `removed from template` 検出は有効で、真に template から削除された pack ファイルは `packs/languages/<pack>/<rel>` のフルパスで警告に現れる。
+- **pack の一時的失敗時のエントリ保持 vs release 削除時の明示的ドロップ**: これらは反対の挙動を持つ 2 経路として区別される。
+  - *一時的失敗（preservation）*: pack が `scaffold.AvailablePacks()` には存在するが、埋め込み FS のロードまたは diff 計算が失敗した場合、その pack に対応する旧マニフェストのエントリは新マニフェストへそのままコピーされ、追跡情報は失われない（Warning を stderr に出力）。一時的不具合で既存エントリが消えて再生成扱いになることを防ぐ。
+  - *release で削除された pack（explicit drop）*: pack が `scaffold.AvailablePacks()` に存在しない（リリースで削除・改名された）場合、マニフェスト追跡は明示的にドロップされ、`Meta.Packs` からも外れる。ディスク上のファイルはそのまま残され、`Notice: pack "<pack>" no longer exists in templates — manifest tracking dropped (files on disk left untouched)` が stderr に出力される。
 
 ## セキュリティ考慮事項
 

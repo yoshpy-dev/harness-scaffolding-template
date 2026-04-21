@@ -61,3 +61,78 @@ These are flagged for `/verify` and `/test` to confirm, not for this review to a
   5. Mark `ComputeDiffsNoRemovals` with a `// Deprecated:` comment (or add a tech-debt entry documenting the planned removal per plan's Open questions).
 
 No tech-debt file addition is required for this review — all deferred items are small hygiene fixes that fit into follow-up commits rather than accumulated complexity.
+
+## Round 2 (post-codex)
+
+- Date: 2026-04-21
+- Trigger: Re-review after two Codex ACTION_REQUIRED fixes landed in commit `d16cb4d`.
+- Scope: `git show d16cb4d` only. Prior commits (`6293000`, `d473bf8`, `b01861f`, `af16b7e`, `9f5ccc8`, `f7ab8bf`) were approved in the earlier round.
+- Reviewer: reviewer subagent (self-review, diff quality only).
+
+### Evidence reviewed
+
+- `git show d16cb4d --stat`: 3 files, +118 / -41
+  - `internal/cli/upgrade.go` (+37 / −17, net +20)
+  - `internal/cli/cli_test.go` (+59 / −17, net +42)
+  - `docs/reports/codex-triage-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md` (triage rewrite — out of code-quality scope)
+- Full re-read of `internal/cli/upgrade.go` (current HEAD).
+- Re-read of `internal/upgrade/diff.go:170-183` (removal loop, to confirm re-prefix interaction).
+- `scaffold.AvailablePacks()` at `internal/scaffold/embed.go:35-47`.
+- `setupTestEmbedFS` at `internal/cli/cli_test.go:12-25` (to confirm the test fixture genuinely lacks `deprecated.sh` and `ghostpack`).
+
+### What the commit does
+
+1. Pack-sweep removal detection: flips `ComputeDiffsWithManifest(packManifest, packDir, packFS, false)` → `true`. A tracked-but-missing pack file now surfaces as `ActionRemove`, then gets re-prefixed to `packs/languages/<pack>/<file>` before hitting the switch. The `ActionRemove` branch (`upgrade.go:225-229`) preserves `OldHash` so next-upgrade is idempotent.
+2. Disappeared-pack handling: adds an `AvailablePacks()` pre-check. Packs absent from current templates are dropped (not preserved) — both from the per-pack diff loop and from the new `retainedPacks` slice that replaces the blanket `manifest.Meta.Packs = installedPacks` assignment.
+3. Warning text disambiguation: `"Warning: pack %s: %v"` → `"Warning: pack %s load failed: %v (preserving manifest entries)"` and `"Warning: pack %s diff failed: %v (preserving manifest entries)"`. Resolves the earlier round's LOW finding on ambiguous warning wording.
+4. Tests: renames `TestRunUpgrade_PreservesOldPackEntriesOnDiffFailure` → `TestRunUpgrade_DropsPacksRemovedFromTemplates` to match the new contract; adds `TestRunUpgrade_ReportsDeletedPackFile` exercising the re-prefixed `ActionRemove` path.
+
+### Findings
+
+| Severity | Area | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- | --- |
+| LOW | `internal/cli/cli_test.go:297-321` — `TestRunUpgrade_ReportsDeletedPackFile` | The test asserts the deprecated entry is **retained** via `OldHash` preservation (idempotency on re-run), but it does not also assert the user actually saw the "removed from template" notice on stderr. The whole point of the fix is the user-facing signal; if a future refactor silently suppressed the `fmt.Printf("  ⚠ %s (removed from template — review and delete manually)\n", d.Path)` branch, this test would still pass because the manifest preservation behavior is independent of the print. | `internal/cli/cli_test.go:315-320` — only manifest-entry existence is asserted. `upgrade.go:228` emits the notice but to stdout, not stderr (`fmt.Printf` → stdout). The test doesn't capture stdout. | Capture `os.Stdout` during `runUpgrade` and assert the output contains the pack-prefixed path `packs/languages/golang/deprecated.sh`. Alternatively, flag for `/test` to confirm coverage. Not blocking. |
+| LOW | `internal/cli/cli_test.go:256-296` — `TestRunUpgrade_DropsPacksRemovedFromTemplates` | The test asserts ghostpack is **removed** from `m2.Meta.Packs` but does not assert golang is **retained** in `m2.Meta.Packs`. If a regression accidentally emptied `retainedPacks` (e.g. someone moved the `append` back into an unreachable branch), this test would still pass. | `internal/cli/cli_test.go:289-293` — `for _, p := range m2.Meta.Packs { if p == "ghostpack" { ... } }` catches ghostpack's presence but an empty slice also satisfies the loop. | Add `if !slices.Contains(m2.Meta.Packs, "golang") { t.Error("golang pack dropped from Meta.Packs") }`. Not blocking. |
+| LOW | `internal/cli/upgrade.go:129-131` | Message `"Notice: pack %q no longer exists in templates — manifest tracking dropped (files on disk left untouched)"` uses `%q` for the pack name while the adjacent warnings at lines 136 / 149 use `%s`. Minor inconsistency in stderr formatting. | `upgrade.go:130, 136, 149`. | Harmonize on `%q` (quoting the pack name reads better across all three messages). Cosmetic only. |
+| LOW | `internal/cli/upgrade.go:121, 168` | `preservedPackEntries` map + `maps.Copy(manifest.Files, preservedPackEntries)` is now dead in practice for the common "pack disappeared" case (the most-likely reason `PackFS` would fail), because the `AvailablePacks` pre-check intercepts those packs before they reach the preservation path. The path is only live for true transient errors (disk-IO failure on `fs.Sub`, `ReadDir` error, etc.). Still correct, but the comment at `:118-120` should reflect that preservation is now scoped to genuinely transient `PackFS` / `ComputeDiffsWithManifest` failures — not to the disappeared-pack case. | `upgrade.go:118-120` comment: *"a transient error does not permanently drop their tracking. Packs that have been removed from the template release are explicitly NOT preserved."* — this now reads accurately; the prior round's concern was resolved. Noting here only to confirm the comment matches the code. | No change needed. Logged for verification. |
+| LOW | `internal/cli/upgrade.go:113` | `available := make(map[string]bool, len(availablePacks))` uses `map[string]bool` for a set membership check. `map[string]struct{}{}` is the idiomatic Go zero-byte-value set; `map[string]bool` is fine but marginally wastes 1 byte per entry. Given the pack count is tiny (N<10 in practice), the perf difference is literally zero. Purely stylistic. | `upgrade.go:113-116`. | Either leave as-is (readable) or switch to `struct{}{}`. Non-blocking. |
+
+No CRITICAL, HIGH, or MEDIUM findings.
+
+### Cross-check against Round 1 follow-ups
+
+The prior round flagged five LOW / one MEDIUM items. Commit `d16cb4d` resolves some and introduces no regressions:
+
+- **MEDIUM `basePrefix` misnaming** — already resolved in `b01861f` (outside this commit). Current code uses `packNamespacePrefix`. ✓
+- **LOW `splitManifestFor*` wasted `NewManifest` allocation** — not addressed (still at `upgrade.go:51-53, 67-69`). Still LOW, still non-blocking. Not in scope for this Round 2 commit.
+- **LOW ambiguous warning wording** — resolved by `d16cb4d` (warnings now say "load failed" vs "diff failed"). ✓
+- **LOW three pack-path construction sites** — unchanged. Still LOW. Out of scope for Round 2.
+- **LOW test-name mismatch (`PreservesOldPackEntriesOnDiffFailure` vs actual PackFS branch)** — superseded: the test was replaced, not renamed. The old concern is moot. The new test (`DropsPacksRemovedFromTemplates`) exercises the `AvailablePacks` pre-check path; the PackFS-failure branch at `upgrade.go:134-140` and the diff-failure branch at `:147-153` are both now **uncovered** by direct tests (both require provoking a transient-error scenario not present in the embedded-FS fixtures). Coverage gap to flag for `/test`. ✓ (partial — gap shifted, not closed)
+- **LOW `ComputeDiffsNoRemovals` dead-public shim** — unchanged. Still LOW. Out of scope.
+
+### Correctness spot-checks
+
+- **Re-prefix safety for `ActionRemove`**: walk in `ComputeDiffsWithManifest` emits `ActionRemove` with `Path = "deprecated.sh"` (stripped key). Line 155 re-prefixes to `"packs/languages/golang/deprecated.sh"`. Switch at line 225 calls `manifest.SetFile(fullPath, d.OldHash)`. No collision with a possible `ActionAdd` at the same stripped path, because `ActionAdd` only fires when the file is in `newFS` and not in `packManifest.Files`; `ActionRemove` only fires when the file is in `packManifest.Files` and not in `newFS`. Mutually exclusive on `path`. ✓
+- **`retainedPacks` ordering**: maintains insertion order of `installedPacks`. No sorting regression. ✓
+- **`available` map nil-safety**: `AvailablePacks` returns `nil, err` on failure; the `err` branch returns early, so `availablePacks` is never iterated when nil. ✓
+- **`available[pack]`**: safe read on an initialized (possibly empty) map. Missing key yields `false`. ✓
+- **No new debug prints, TODOs, commented code, or secrets** in the diff. ✓
+- **No new exception swallowing**: every `err` path either returns with context or logs to stderr with a preservation fallback. ✓
+
+### Coverage gaps (for `/test`, not blocking merge here)
+
+- The genuine transient `PackFS` failure branch (`upgrade.go:134-140`) has no direct test now that the ghostpack scenario was repurposed. Triggering it would require injecting an `fs.Sub` error against a pack that IS in `AvailablePacks()` — hard to provoke from `fstest.MapFS`.
+- The pack-scoped `ComputeDiffsWithManifest` failure branch (`upgrade.go:147-153`) similarly has no direct test.
+- `TestRunUpgrade_ReportsDeletedPackFile` does not assert the stdout notice was emitted (see LOW finding above).
+
+### Recommendation
+
+- Merge: **approve** (no CRITICAL, HIGH, or MEDIUM findings).
+- All Round 2 findings are LOW cosmetic / test-assertion completeness items. None block the fix.
+- Follow-ups (non-blocking, can ship separately):
+  1. Harmonize stderr formatting verb (`%q` vs `%s`) across the three pack-related messages.
+  2. Strengthen `TestRunUpgrade_DropsPacksRemovedFromTemplates` to positively assert golang is retained in `Meta.Packs`.
+  3. Add a stdout-capture assertion to `TestRunUpgrade_ReportsDeletedPackFile`, or flag for `/test` to confirm the pack-scoped ActionRemove notice actually surfaces to users.
+  4. Consider covering the transient `PackFS` / `ComputeDiffsWithManifest` failure branches (may require a custom `fs.FS` wrapper that injects errors mid-walk).
+
+No tech-debt entry needed — findings are small and directly actionable. The Codex ACTION_REQUIRED concerns are genuinely addressed by the code changes, not just papered over.

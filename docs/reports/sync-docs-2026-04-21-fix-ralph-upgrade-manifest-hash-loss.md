@@ -45,3 +45,35 @@ Align product documentation with the implemented behavior of `ralph upgrade` ide
 ## Verdict
 
 Documentation now matches implementation for the four behaviors flagged by `/verify`. No further doc drift detected outside the spec. Ready for `/codex-review` and `/pr`.
+
+## Round 2 (post-codex)
+
+- Date: 2026-04-21
+- Trigger: Verify Round 2 report (`docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md` §"Documentation drift (for `/sync-docs`)", lines 137–148) flagged two stale lines in `docs/specs/2026-04-16-ralph-cli-tool.md` after commit `d16cb4d` (`fix(upgrade): restore pack removal detection and drop disappeared packs`).
+
+### Files updated
+
+| File | Change | Reason |
+| --- | --- | --- |
+| `docs/specs/2026-04-16-ralph-cli-tool.md` (line 290, "pack の名前空間化" bullet) | Replaced the "pack 側は `checkRemovals=false` で計算し、…" sentence with a description of the split-manifest mechanism (`splitManifestForBase` / `splitManifestForPack`) and added an explicit statement that pack-scope removal detection stays enabled, so genuine pack-file deletions surface as `removed from template` with the `packs/languages/<pack>/<rel>` path preserved. | Implementation now uses `checkRemovals=true` on the pack scope (`internal/cli/upgrade.go:143-147`). The no-double-classification invariant still holds, but via manifest splitting (base excludes `packs/languages/`, pack scope only sees that pack's entries), not via disabling removal detection. |
+| `docs/specs/2026-04-16-ralph-cli-tool.md` (line 291, pack-diff-failure bullet) | Split the single bullet into two sub-bullets under a new heading "pack の一時的失敗時のエントリ保持 vs release 削除時の明示的ドロップ": (a) transient PackFS / diff-compute failures on packs still in `scaffold.AvailablePacks()` → preservation with Warning; (b) packs removed from the release (not in `AvailablePacks()`) → explicit drop with Notice, `Meta.Packs` filtered, on-disk files untouched. | Commit `d16cb4d` introduced two opposite-outcome code paths: `preservePackEntries` (transient) vs the `!available[pack]` continue-with-Notice branch (`internal/cli/upgrade.go:129-132, 164`). The old wording conflated them under "preserve entries," which now contradicts implementation for the disappeared-pack case. |
+
+### Scope discipline
+
+- Only the two lines flagged by Verify Round 2 were rewritten. Surrounding bullets (same-version idempotency, empty-hash heal) were not touched — they remain accurate and in scope.
+- No implementation or test files modified.
+- `AGENTS.md` / `CLAUDE.md` untouched: the fix is still contained within the `upgrade` command, no repo-map-level surface changed. `internal/upgrade/` description ("hash-based diff engine, conflict resolution (auto-update, conflict, add, remove)") remains accurate — the new "disappeared-pack drop" is a Notice-level operator signal, not a new public action on the diff engine.
+- `README.md`, `docs/recipes/*`, `.claude/rules/*`, `docs/quality/*` re-checked: none reference pack-diff failure semantics or the `checkRemovals` flag, so no ripple edits needed.
+
+### Evidence
+
+- Verify Round 2 findings: `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md` lines 137–148.
+- Implementation anchors for the new spec wording:
+  - `internal/cli/upgrade.go:47-70` — `splitManifestForBase` / `splitManifestForPack` namespacing.
+  - `internal/cli/upgrade.go:102-103, 142-147` — base (`checkRemovals=true`) and pack (`checkRemovals=true`) diff scopes.
+  - `internal/cli/upgrade.go:124-140, 150, 164` — transient-failure preservation vs disappeared-pack drop + `retainedPacks` filter on `Meta.Packs`.
+  - `internal/cli/upgrade.go:129-131` — exact `Notice: pack %q no longer exists in templates — manifest tracking dropped (files on disk left untouched)` string quoted in the spec.
+
+### Round 2 verdict
+
+Spec lines 290–291 now match the post-`d16cb4d` implementation. No remaining doc drift identified by Verify Round 2. Ready for re-run of `/codex-review` and `/pr`.

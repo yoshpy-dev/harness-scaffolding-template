@@ -90,3 +90,84 @@ No blockers for `/test`. Documentation drift items are tracked for `/sync-docs` 
 
 - Raw verification output: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.log`
 - This report: `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md`
+
+## Round 2 (post-codex)
+
+- Date: 2026-04-21
+- Trigger: Re-verify after commit `d16cb4d` addressed two Codex ACTION_REQUIRED findings.
+- Scope: Confirm the two new behaviors are spec-consistent; re-run static analysis; flag doc drift for `/sync-docs`.
+- Verifier: verifier subagent (Claude Code).
+
+### What changed since Round 1
+
+Commit `d16cb4d` (`fix(upgrade): restore pack removal detection and drop disappeared packs`) makes two corrections:
+
+1. Pack-scoped `upgrade.ComputeDiffsWithManifest(packManifest, packDir, packFS, …)` switched from `checkRemovals=false` to `checkRemovals=true`. A tracked-but-missing pack file now surfaces as `ActionRemove`; `internal/cli/upgrade.go:154-156` re-prefixes the `Path` back to `packs/languages/<pack>/<file>` so the user sees the "removed from template" notice and the manifest entry is preserved with its `OldHash` (idempotency on re-run).
+2. Packs no longer present in `scaffold.AvailablePacks()` are explicitly dropped from the new manifest: they are neither diffed nor included in `Meta.Packs` (via the new `retainedPacks` slice). A `Notice: pack %q no longer exists in templates …` is emitted to stderr. Preservation via `preservePackEntries` is now reserved for genuinely transient failures (PackFS load or pack-diff computation) on packs that ARE still available.
+
+No new acceptance criteria were added — the fix restores the original contract (pack-file removals surface with a warning; disappeared packs get dropped rather than leaking forward as "unknown language pack" noise on every upgrade).
+
+### Deterministic checks re-run
+
+| Command | Result | Evidence |
+| --- | --- | --- |
+| `HARNESS_VERIFY_MODE=static ./scripts/run-static-verify.sh` | EXIT=0 | `/tmp/run-static-verify.log` (captured into `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round2.log`) |
+| `./scripts/run-verify.sh` | EXIT=0 | `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round2.log` — all shell/hook syntax checks, `check-sync`, mojibake tests, and the golang verifier (gofmt + go vet + go test) passed |
+| `go vet ./...` | EXIT=0 (clean) | No output |
+| `gofmt -l internal/` | EXIT=0 (clean) | No output |
+| `git status` / `git diff HEAD` | Working tree has only a non-code edit | `docs/reports/self-review-…md` has a Round 2 section appended (not staged). No committed-code drift. |
+
+### Spec-consistency of the two new behaviors
+
+| Behavior | Code location | Status vs spec | Evidence |
+| --- | --- | --- | --- |
+| Pack-file deletions surface as `ActionRemove` with `packs/languages/<pack>/<file>` path, and the manifest keeps the old hash | `internal/cli/upgrade.go:143-157, 225-229`; `internal/upgrade/diff.go:171-183` | Code-level contract restored. Behaviorally verified by `TestRunUpgrade_ReportsDeletedPackFile` emitting `⚠ packs/languages/golang/deprecated.sh (removed from template — review and delete manually)` on stdout and `Removed from template: 1 files (review manually)`. | `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round2.log` (go test output) |
+| Packs missing from `scaffold.AvailablePacks()` are dropped (manifest entries removed, `Meta.Packs` filtered) with a stderr Notice; on-disk files left untouched | `internal/cli/upgrade.go:108-132, 164` | Code-level contract now matches commit message. Behaviorally verified by `TestRunUpgrade_DropsPacksRemovedFromTemplates` emitting `Notice: pack "ghostpack" no longer exists in templates — manifest tracking dropped (files on disk left untouched)`. | Same evidence log |
+
+Both behaviors are internally consistent and compile/vet/format cleanly. The `ActionRemove` re-prefix is mutually exclusive with `ActionAdd` on the same path (one requires file-in-manifest-but-not-FS, the other requires file-in-FS-but-not-manifest), so AC4 (no double classification) remains satisfied under the new `checkRemovals=true` setting.
+
+### Spec compliance (Round 1 acceptance criteria re-check)
+
+All 8 Round 1 acceptance criteria remain Verified (the fix is scoped to pack-path handling and does not regress any AC1–AC8 evidence):
+
+- AC1–AC3, AC6–AC8: unchanged, still green via the same tests.
+- AC4 (pack ファイルが同一 upgrade 内で `removed` と `new file` に同時分類されない): still Verified by construction. The change from `checkRemovals=false` → `true` only re-enables removal detection for pack files that are truly gone from the template; add/remove remain mutually exclusive per-path. `TestRunUpgrade_SameVersionIsIdempotent` still asserts no `modified/removed/new` output on a same-version re-run.
+- AC5 (pack 診断失敗時のエントリ保持): narrowed scope (transient errors only). Behavior still holds for `PackFS` failure and pack `ComputeDiffsWithManifest` failure on packs that ARE available. The disappeared-pack path is now a separate, intentional drop.
+
+### Documentation drift (for `/sync-docs`)
+
+The spec `docs/specs/2026-04-16-ralph-cli-tool.md` now has **two specific lines that must be updated** to reflect the post-fix behavior. This is drift that `/sync-docs` must address:
+
+1. **Line 290** — currently reads: "… pack 側は `checkRemovals=false` で計算し、同一ファイルが `removed from template` と `new file` の両方に現れることはない。"
+   - Problem: `checkRemovals=false` is stale. The current code uses `checkRemovals=true` for pack diffs. The "never appears as both removed and new" invariant still holds, but the mechanism is now: base sweep's `packs/languages/` exclusion via `splitManifestForBase` prevents base-side "removed"; pack sweep's namespace-stripped manifest via `splitManifestForPack` prevents pack-side "new" misclassification.
+   - Recommended fix (for `/sync-docs`): rewrite to describe the split-manifest mechanism rather than the `checkRemovals` flag, and explicitly state that genuine pack-file deletions now surface as `removed from template` with the pack path preserved.
+
+2. **Line 291** — currently reads: "pack の埋め込み FS ロードや diff 計算が失敗した場合、その pack に対応する旧マニフェストのエントリは新マニフェストへそのままコピーされ、追跡情報は失われない（警告は stderr に出力）。"
+   - Problem: does not distinguish between (a) transient failures (PackFS load or diff computation) on packs that are still available — entries **preserved**, and (b) packs that have been removed/renamed in the release and are no longer in `scaffold.AvailablePacks()` — entries **explicitly dropped** with a `Notice`. After the fix, these are two separate paths with opposite outcomes.
+   - Recommended fix (for `/sync-docs`): split into two bullets — "pack が一時的に壊れた場合（preservation）" vs "pack が release で削除された場合（explicit drop with Notice）".
+
+No drift in `AGENTS.md`, `CLAUDE.md`, `README.md`, or `docs/recipes/*` — none expose these contracts. The plan itself is archived and its Open questions bullet mentions future `ComputeDiffsNoRemovals` deprecation, which is still accurate.
+
+### Coverage gaps (for `/test` awareness, non-blocking)
+
+- The transient-`PackFS`-failure branch (`upgrade.go:134-140`) and the transient-pack-diff-failure branch (`upgrade.go:147-153`) are no longer exercised by any test (the ghostpack fixture was repurposed for the disappeared-pack case). Provoking them would require injecting `fs.Sub` failure against a pack that **is** in `AvailablePacks()`, which is awkward from `fstest.MapFS`. Not a regression, but worth a follow-up.
+- `TestRunUpgrade_ReportsDeletedPackFile` does not assert the exact stdout line (`⚠ packs/languages/golang/deprecated.sh …`). The test currently verifies only that the manifest entry is retained with `OldHash`. The observed stdout in the test run (captured above) confirms the notice fires, but a future refactor could silently suppress the print and this test would still pass.
+
+### Smallest useful additional check
+
+If one more assertion were added, the highest-leverage one would be: in `TestRunUpgrade_ReportsDeletedPackFile`, capture `os.Stdout` and assert it contains `packs/languages/golang/deprecated.sh (removed from template`. This locks in the user-facing signal that Codex P2 identified as the regression, independent of the manifest bookkeeping. One-line test addition.
+
+### Round 2 verdict
+
+- Verified: both new behaviors (pack `ActionRemove` surfacing; disappeared-pack drop) compile cleanly, pass `go vet` / `gofmt`, and are exercised by integration tests via `run-verify.sh`. Round 1 ACs remain Verified. No contract regressions.
+- Likely but unverified: correctness under true transient `PackFS` / pack-diff failures — no direct tests cover those branches after the fixture repurposing. Low risk (narrow error paths).
+- Documentation drift: two concrete stale lines in `docs/specs/2026-04-16-ralph-cli-tool.md` (lines 290 and 291). **Must be fixed by `/sync-docs` before `/pr`** — shipping the fix without updating these lines leaves the spec contradicting the implementation.
+
+**Overall Round 2 verdict: PASS (with doc-drift flag for `/sync-docs`)**
+
+No code-level blockers. Proceed to `/test` (or re-run `/test` if fix-and-revalidate pipeline requires). `/sync-docs` must rewrite `docs/specs/2026-04-16-ralph-cli-tool.md` lines 290 and 291 in its next pass.
+
+### Round 2 artifacts
+
+- Raw Round 2 verification output: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round2.log`
+- This report (updated in-place): `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md`

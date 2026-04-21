@@ -121,3 +121,76 @@ Both skips predate this branch and do not affect the upgrade fix.
 - Blocked: no
 
 **Tests are green. Safe to proceed to `/sync-docs` → `/codex-review` → `/pr` per the post-implementation pipeline.**
+
+## Round 2 (post-codex)
+
+- Date: 2026-04-21
+- Trigger: Codex ACTION_REQUIRED finding — pack removal detection silently dropped. Fix landed in commit `d16cb4d` ("fix(upgrade): restore pack removal detection and drop disappeared packs").
+- Evidence: `docs/evidence/test-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round2.log`
+- Command: `go test ./... -count=1` (green, exit 0)
+
+### Test suite delta vs. Round 1
+
+| Item | Round 1 | Round 2 | Delta |
+| --- | --- | --- | --- |
+| Total Go tests | 167 | 168 | +1 |
+| Passed | 165 | 166 | +1 |
+| Failed | 0 | 0 | 0 |
+| Skipped | 2 | 2 | 0 |
+
+Net +1 reflects the plan-driven test churn in `internal/cli`:
+- `TestRunUpgrade_PreservesOldPackEntriesOnDiffFailure` was **replaced** (the silent-preserve behavior it asserted is no longer the contract — packs absent from templates are now intentionally dropped from the manifest).
+- `TestRunUpgrade_DropsPacksRemovedFromTemplates` **new** (replacement).
+- `TestRunUpgrade_ReportsDeletedPackFile` **new** (net add).
+
+### New / replaced tests — status
+
+| Test | Package | Status | Evidence |
+| --- | --- | --- | --- |
+| `TestRunUpgrade_DropsPacksRemovedFromTemplates` (replaces `TestRunUpgrade_PreservesOldPackEntriesOnDiffFailure`) | `internal/cli` | PASS (0.02s) | Stdout `Notice: pack "ghostpack" no longer exists in templates — manifest tracking dropped (files on disk left untouched)` |
+| `TestRunUpgrade_ReportsDeletedPackFile` | `internal/cli` | PASS (0.02s) | Stdout `⚠ packs/languages/golang/deprecated.sh (removed from template — review and delete manually)` + `Removed from template: 1 files` |
+
+Grep confirms the old test name is gone from `internal/cli/cli_test.go` (no stale references).
+
+### Round 1 regression check (no regressions)
+
+All previously-green plan-targeted tests still PASS in Round 2:
+
+| Test | Package | Round 2 status |
+| --- | --- | --- |
+| `TestComputeDiffs_Skip_PreservesHash` | `internal/upgrade` | PASS |
+| `TestComputeDiffsWithManifest_PackPrefixedSubset` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_HealsEmptyHash_WhenDiskMatchesTemplate` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_AutoUpdate` / `_Conflict` / `_AddNewFile` / `_RemoveFile` | `internal/upgrade` | PASS (all four) |
+| `TestRunUpgrade_SameVersionIsIdempotent` | `internal/cli` | PASS |
+| `TestRunUpgrade_HealsCorruptedManifest` | `internal/cli` | PASS |
+| `TestRunUpgrade_AutoUpdate` | `internal/cli` | PASS |
+
+### Package breakdown (Round 2)
+
+| Package | Result | Duration |
+| --- | --- | --- |
+| `internal/action` | ok | 4.223s |
+| `internal/cli` | ok | 0.960s |
+| `internal/config` | ok | 1.083s |
+| `internal/scaffold` | ok | 1.750s |
+| `internal/state` | ok | 1.426s |
+| `internal/ui` | ok | 2.096s |
+| `internal/ui/panes` | ok | 3.575s |
+| `internal/upgrade` | ok | 2.778s |
+| `internal/watcher` | ok | 4.041s |
+| root, `cmd/ralph`, `cmd/ralph-tui` | no test files | — |
+
+### Skipped (unchanged from Round 1)
+
+`TestBaseFS_WithMockFS` and `TestAvailablePacks_WithMockFS` in `internal/scaffold` — pre-existing placeholder skips, unrelated to this change.
+
+### Round 2 verdict
+
+- Pass: yes
+- Fail: no
+- Blocked: no
+- Regressions: none
+
+**Tests remain green after the Codex-driven pack-removal fix. Safe to proceed to `/sync-docs` → `/codex-review` (re-run) → `/pr`.**
