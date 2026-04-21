@@ -86,4 +86,15 @@ Categories: false-positive, already-addressed, style-preference, out-of-scope, c
 | 6 | [P2] Preserve hash provenance for edited empty-hash repairs — `internal/upgrade/diff.go:118-124`. 破損マニフェスト (`hash=""`) × ユーザ編集で `ActionConflict` が発火するが `OldHash="" ` のまま返る。`runUpgrade` の skip 分岐は `manifest.SetFile(d.Path, d.OldHash)` で空文字を書き戻すので、非対話モードや skip 選択時に heal が完了せず同じファイルが永遠に conflict する。| 真の regression。heal は「壊れたマニフェストを無風で直す」契約のはずが、user-edited ケースで無限 loop。修正方針: heal 時の `ActionConflict` で `OldHash: newHash` を詰める（template を新しい baseline として採用）。skip 選択で newHash が書き戻され、次回 upgrade は `newHash == mf.Hash` で ActionSkip に落ちる。Axis1=Yes, Axis2=Yes。1行変更。| `internal/upgrade/diff.go:118-124` |
 | 7 | [P2] Keep removed-file provenance after the first warning — `internal/cli/upgrade.go:235-241`. `ActionRemove` 後にマニフェストエントリを drop すると最後の template hash が失われる。ユーザが "review and delete manually" 通知後もファイルを残し、後のリリースで同じ path が復活した場合、`ComputeDiffsWithManifest` はマニフェストにエントリが無いので `ActionAdd` と分類し、disk を無警告で上書きする → silent data loss。| 本当の data-loss path。edge case だが serious。修正方針: `ActionAdd` 側で disk 存在 + 内容差を検出し、`ActionConflict` に格上げする（disk 無し or 同一内容なら従来通り Add）。これで reintroduction でも user に conflict prompt が出る。Axis1=Yes, Axis2=Yes。約10行の変更。| `internal/upgrade/diff.go:69-77` (ActionAdd path), `internal/cli/upgrade.go:210-219` |
 
+---
+
+## Round 5 (post-ef8e3ed,3443edd)
+
+- Codex findings: 0
+- After triage: ACTION_REQUIRED=0, WORTH_CONSIDERING=0, DISMISSED=0
+
+Codex verdict: *"I did not find any discrete, actionable bugs in the changed upgrade/diff logic relative to main. The patch consistently scopes pack manifests, repairs empty-hash entries, preserves pack state on transient errors, and adds safeguards for reintroduced paths without introducing an obvious regression."*
+
+Convergence reached across 5 Codex review rounds (7 P2 findings across rounds 1-4, all fixed and verified). No remaining ACTION_REQUIRED or WORTH_CONSIDERING items. Safe to proceed to PR update.
+
 
