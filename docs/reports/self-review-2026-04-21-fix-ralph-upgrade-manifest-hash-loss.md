@@ -207,3 +207,45 @@ No CRITICAL, HIGH, or MEDIUM findings.
 - The Round 2 self-review LOW ("positive golang retention") is closed.
 
 No tech-debt entry needed. Round 3 introduces no new accumulated complexity — it removes a latent idempotency bug and hardens test portability.
+
+## Round 4 (post-codex-3)
+
+**Scope:** commit `0d1c4b0` only — Codex Round 3 P2 follow-up. Downgrades `scaffold.AvailablePacks()` error from a full `runUpgrade` abort to a stderr warning, preserves every installed pack's manifest entries as a transient fallback, and adds `TestRunUpgrade_SurvivesAvailablePacksFailure` covering the path.
+
+**Files:** `internal/cli/upgrade.go` (+18/−7), `internal/cli/cli_test.go` (+48), `docs/reports/codex-triage-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md` (+13).
+
+### Change summary
+
+1. `scaffold.AvailablePacks()` result is now captured as `(availablePacks, apErr)` without early-return. When `apErr != nil`, a stderr warning is printed and each installed pack's manifest entries are copied into `preservedPackEntries` via the existing `preservePackEntries` helper; the pack is added to `retainedPacks`; `installedPacks = nil` short-circuits the per-pack diff loop.
+2. `available := make(map[string]bool, len(availablePacks))` runs unconditionally after the `apErr` block. Under `apErr != nil` the map is empty (since `availablePacks` is `nil`), but it is unused — `installedPacks` was nilled above so the per-pack loop exits immediately.
+3. `TestRunUpgrade_SurvivesAvailablePacksFailure` injects an `fstest.MapFS` missing `templates/packs/`, asserts `runUpgrade` returns nil, and verifies both `m.Files["packs/languages/golang/README.md"]` and `"golang" ∈ m.Meta.Packs` are preserved. Cleanup re-seats the real mock via `t.Cleanup(func() { setupTestEmbedFS(t) })`.
+
+### Findings
+
+| Severity | Area | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- | --- |
+| LOW | `internal/cli/upgrade.go:129-132` — redundant `available` construction under `apErr != nil` | When `apErr != nil` the code still builds `available := make(map[string]bool, 0)` and iterates a nil `availablePacks`. Harmless (empty map, empty range) but does a tiny bit of unused work and reads awkwardly next to the `apErr` short-circuit just above. A reader might briefly wonder whether the empty `available` interacts with the now-empty `installedPacks`. | `upgrade.go:121-132` — the `if apErr != nil` block ends with `installedPacks = nil` but falls through to `available := make(...)` unconditionally. | Optional: move lines 129-132 inside an `else` branch of `if apErr != nil`, or return early from the `apErr` branch after writing the manifest (though that complicates the control flow). Cosmetic only. |
+| LOW | `internal/cli/cli_test.go:398-403` — `found` loop has no `break` | `for _, p := range m.Meta.Packs { if p == "golang" { found = true } }` iterates the full slice even after matching. Current slice length is 1, so wall-clock cost is zero; but the pattern (linear scan → boolean flag → post-loop assert) is the same one flagged in Round 2 for `TestRunUpgrade_DropsPacksRemovedFromTemplates` where it was intentional (to assert both directions). Here only one direction is asserted, so the two-phase pattern is slightly over-engineered. | `cli_test.go:398-406`. | Optional: `slices.Contains(m.Meta.Packs, "golang")` in one line, or add `break` after `found = true`. Non-blocking. |
+| LOW | `internal/cli/cli_test.go:377-382` — FS swap duplicates `setupTestEmbedFS` literal | The inline `fstest.MapFS{...}` at lines 377-382 is identical to the base block of `setupTestEmbedFS` (cli_test.go:17-26) minus the `templates/packs/*` keys. If `setupTestEmbedFS` ever adds a new base file (e.g., a new required template), this test's FS will silently drift and the test may start failing for an unrelated reason, or mask a real base-upgrade regression. | `cli_test.go:17-26` vs `cli_test.go:377-382`. | Optional: extract a helper `setupTestEmbedFSWithoutPacks(t)` that mutates the result of `setupTestEmbedFS` by deleting the pack keys. Low priority — test FS churn has been low historically. |
+
+No CRITICAL, HIGH, or MEDIUM findings.
+
+### Correctness spot-checks
+
+- **Fallback path reaches the manifest writer.** After `apErr != nil`, control flows through the empty per-pack loop (`installedPacks = nil`), into the `diffs` processing loop (base diffs only), then to `manifest.Meta.Packs = retainedPacks` at `upgrade.go:174` and `maps.Copy(manifest.Files, preservedPackEntries)` at `:178`. Both pieces of state are populated in the `apErr` branch. ✓
+- **Warning-vs-error consistency.** The new `"Warning: unable to list available packs: %v (preserving installed pack entries)\n"` format mirrors the existing `"Warning: pack %s load failed: %v (preserving manifest entries)\n"` at `:146` and `"Warning: pack %s diff failed: %v (preserving manifest entries)\n"` at `:159`. Same `Warning:` prefix, same parenthetical rationale. Good consistency. ✓
+- **Variable naming.** `apErr` follows the repo convention of short, scoped error names (`pErr` at `:145, :157`, `err` at `:79, :89`). Grep-able and does not collide. ✓
+- **Test triggering mechanism.** `fstest.MapFS` without `templates/packs/` — `fs.ReadDir` returns an `fs.PathError` wrapping `fs.ErrNotExist`, which is surfaced unchanged by `AvailablePacks`. The test does not assert the specific error type, only that `runUpgrade` returns nil. This is the right level of coupling; the error is a user-facing `Warning:` string anyway. ✓
+- **No new debug prints, TODOs, commented-out code, or secrets.** ✓
+- **No exception swallowing.** The `apErr` is logged (not discarded) and the fallback path is explicit. ✓
+- **Cleanup hygiene.** `t.Cleanup(func() { setupTestEmbedFS(t) })` at `cli_test.go:383` resets the package-level `scaffold.EmbeddedFS` so subsequent tests in the same binary are not affected. Matches the pattern used elsewhere in the file. ✓
+- **No spec-compliance or doc-drift claim here** — those belong to `/verify` and `/sync-docs`. The diff is scoped tightly to one bug fix + one regression test + one triage-note addendum.
+
+### Recommendation
+
+- Merge: **approve** (no CRITICAL, HIGH, or MEDIUM findings).
+- All Round 4 findings are LOW hygiene items (redundant map build under the fallback branch, optional `break`/`slices.Contains` idiom, optional FS-literal dedup). None block the fix.
+- The Round 3 Codex P2 ACTION_REQUIRED ("don't abort the whole upgrade when pack listing fails") is substantively resolved: a pack-metadata glitch now produces a stderr warning and preserves all installed-pack entries, while base-file upgrades proceed unaffected. `TestRunUpgrade_SurvivesAvailablePacksFailure` exercises both the non-abort behavior and the preservation-of-`Meta.Packs` invariant.
+- No new tech-debt entry needed. Round 4 narrows rather than widens the blast radius of transient pack-FS errors.
+
+**Verdict: approve / no CRITICAL findings. Stop condition for `/self-review` not triggered.**

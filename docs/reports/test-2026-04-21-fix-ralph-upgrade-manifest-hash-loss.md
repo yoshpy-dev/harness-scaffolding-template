@@ -279,3 +279,85 @@ All previously-green plan-targeted tests still PASS in Round 3:
 - Regressions: none
 
 **Tests remain green after the Round 2 Codex follow-up fixes (manifest drop on `ActionRemove` + `filepath.Join` portability). All three specifically-called-out assertions (renamed stdout-capture test, positive golang retention, `filepath.Join` keys) pass. Safe to proceed to `/sync-docs` → `/codex-review` (re-run) → `/pr`.**
+
+## Round 4 (post-codex-3)
+
+- Date: 2026-04-21
+- Trigger: Round 3 Codex follow-up P2 — `scaffold.AvailablePacks()` returning an error (e.g. missing embedded `templates/packs/` directory, `ReadDir` failure) used to abort `runUpgrade` before base diffs could be written, so a pack-metadata glitch would block base-file updates entirely. Fix landed in commit `0d1c4b0` ("fix(upgrade): keep upgrading when AvailablePacks fails"): downgrades the error to a `Warning:` line, preserves every installed pack's manifest entries as a transient fallback, and continues with base upgrade.
+- Evidence: `docs/evidence/test-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round4.log`
+- Command: `go test ./... -count=1` (green, exit 0)
+
+### Test suite delta vs. Round 3
+
+| Item | Round 3 | Round 4 | Delta |
+| --- | --- | --- | --- |
+| Total Go tests | 168 | 169 | +1 |
+| Passed | 166 | 167 | +1 |
+| Failed | 0 | 0 | 0 |
+| Skipped | 2 | 2 | 0 |
+
+Net +1 reflects the single new test added for this Codex fix:
+- `TestRunUpgrade_SurvivesAvailablePacksFailure` **new** in `internal/cli/cli_test.go:365`. Exercises the fallback path by pointing `scaffold.PackFS()` at a non-existent embedded directory so `AvailablePacks()` returns an error, then asserts (a) the upgrade does not abort, (b) the `Warning: unable to list available packs … (preserving installed pack entries)` line is emitted, and (c) the installed `golang` pack manifest entries are preserved.
+
+### Round 4 targeted tests — status
+
+| Test | Package | Status | Evidence |
+| --- | --- | --- | --- |
+| `TestRunUpgrade_SurvivesAvailablePacksFailure` (new) | `internal/cli` | PASS (0.02–0.03s) | Verbose stdout contains `Warning: unable to list available packs: open templates/packs: file does not exist (preserving installed pack entries)`; subsequent `Updated: 0 files / Skipped: 0 files / Manifest updated: .ralph/manifest.toml` confirms the run completed instead of aborting. |
+
+### Round 3 regression check (no regressions)
+
+All previously-green plan-targeted tests still PASS in Round 4 (verified from `/tmp/round4-verbose.log`):
+
+| Test | Package | Round 4 status |
+| --- | --- | --- |
+| `TestComputeDiffs_Skip_PreservesHash` | `internal/upgrade` | PASS |
+| `TestComputeDiffsWithManifest_PackPrefixedSubset` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_HealsEmptyHash_WhenDiskMatchesTemplate` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers` | `internal/upgrade` | PASS |
+| `TestComputeDiffs_AutoUpdate` / `_Conflict` / `_AddNewFile` / `_RemoveFile` | `internal/upgrade` | PASS (all four) |
+| `TestRunUpgrade_SameVersionIsIdempotent` | `internal/cli` | PASS |
+| `TestRunUpgrade_HealsCorruptedManifest` | `internal/cli` | PASS |
+| `TestRunUpgrade_AutoUpdate` | `internal/cli` | PASS |
+| `TestRunUpgrade_DropsPacksRemovedFromTemplates` | `internal/cli` | PASS |
+| `TestRunUpgrade_ReportsDeletedPackFileOnceThenDrops` | `internal/cli` | PASS |
+
+### Package breakdown (Round 4)
+
+| Package | Result | Duration |
+| --- | --- | --- |
+| `internal/action` | ok | 4.059s |
+| `internal/cli` | ok | 0.827s |
+| `internal/config` | ok | 1.261s |
+| `internal/scaffold` | ok | 0.928s |
+| `internal/state` | ok | 1.954s |
+| `internal/ui` | ok | 1.622s |
+| `internal/ui/panes` | ok | 3.430s |
+| `internal/upgrade` | ok | 2.651s |
+| `internal/watcher` | ok | 4.817s |
+| root, `cmd/ralph`, `cmd/ralph-tui` | no test files | — |
+
+### Coverage (Round 4)
+
+- `internal/upgrade`: **80.9%** (unchanged — no production code changes in this package in Round 4)
+- `internal/cli`: **32.5%** (+0.9pp vs. Round 3's 31.6% — new warning/fallback branch in `upgrade.go` is now covered by `TestRunUpgrade_SurvivesAvailablePacksFailure`)
+
+### Skipped (unchanged)
+
+`TestBaseFS_WithMockFS` and `TestAvailablePacks_WithMockFS` in `internal/scaffold` — pre-existing placeholder skips, unrelated to this change.
+
+### Round 4 totals
+
+- Total: 169
+- Passed: 167
+- Failed: 0
+- Skipped: 2
+
+### Round 4 verdict
+
+- Pass: yes
+- Fail: no
+- Blocked: no
+- Regressions: none
+
+**Tests remain green after the Round 3 Codex P2 follow-up fix (`AvailablePacks` failure no longer aborts `runUpgrade`). The new `TestRunUpgrade_SurvivesAvailablePacksFailure` passes, all prior-round targeted tests are regression-free, and `internal/cli` coverage improved by +0.9pp. Safe to proceed to `/sync-docs` → `/codex-review` (re-run) → `/pr`.**

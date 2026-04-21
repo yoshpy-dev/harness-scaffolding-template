@@ -258,3 +258,89 @@ No code-level blockers. Proceed to `/test`. `/sync-docs` must extend `docs/specs
 
 - Raw Round 3 verification output: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round3.log`
 - This report (updated in-place): `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md`
+
+## Round 4 (post-codex-3)
+
+- Date: 2026-04-21
+- Trigger: Re-verify after commit `0d1c4b0` ("fix(upgrade): keep upgrading when AvailablePacks fails") addressed a Round 3 Codex P2 follow-up finding about `runUpgrade` aborting before base diffs when pack enumeration fails.
+- Scope: confirm the new `AvailablePacks()`-failure fallback is spec-consistent, re-run static analysis, and answer the explicit drift question (does the internal resilience detail need to land in the public spec?).
+- Verifier: verifier subagent (Claude Code).
+
+### What changed since Round 3
+
+Commit `0d1c4b0` (`internal/cli/upgrade.go:108-132`, `internal/cli/cli_test.go:365-407`):
+
+1. `scaffold.AvailablePacks()` now returns its error via a named capture (`availablePacks, apErr := scaffold.AvailablePacks()`) instead of bubbling as a hard abort. The previous `if err != nil { return fmt.Errorf("listing available packs: %w", err) }` would kill `runUpgrade` before base diffs were applied, so any pack-metadata glitch blocked base-file upgrades entirely.
+2. On `apErr != nil`, `runUpgrade` now:
+   - emits `Warning: unable to list available packs: %v (preserving installed pack entries)` to stderr (`upgrade.go:122`),
+   - copies every installed pack's manifest entries into `preservedPackEntries` and appends the pack name to `retainedPacks` (`upgrade.go:123-126`),
+   - sets `installedPacks = nil` so the per-pack loop is skipped entirely (`upgrade.go:127`).
+   - Base-diff application and manifest write then proceed normally.
+3. The subsequent `available` set construction (`upgrade.go:129-132`) still runs but is a no-op when `availablePacks == nil`.
+4. Test `TestRunUpgrade_SurvivesAvailablePacksFailure` (`cli_test.go:365-407`) exercises the path by overwriting `scaffold.EmbeddedFS` with a MapFS missing `templates/packs/`, then asserts: (a) `runUpgrade` does not return an error, (b) `packs/languages/golang/README.md` is still in the new manifest, (c) `golang` is still in `Meta.Packs`.
+
+No acceptance criteria were added — the fix is a defensive narrowing of the error-handling contract around pack enumeration, layered on top of the already-verified preserve/drop taxonomy.
+
+### Deterministic checks re-run
+
+| Command | Result | Evidence |
+| --- | --- | --- |
+| `./scripts/run-verify.sh` | `EXIT=0` | All shell/hook syntax checks, settings.json jq parse (both root and `templates/base/`), check-sync (107 identical / 0 drifted), mojibake test battery (11/11 PASS), golang verifier (gofmt ok, `go vet` 0 issues, `go test ./...` all packages PASS incl. `internal/cli` and `internal/upgrade`). Evidence: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round4.log` |
+| `go vet ./...` | `EXIT=0` | No output |
+| `gofmt -l internal/` | `EXIT=0` | No output (0 files flagged) |
+| `git status` | clean | Working tree clean; branch 5 commits ahead of origin, expected |
+
+### Spec-consistency of the new behavior
+
+The fix introduces a **third** pack-error taxon that sits alongside the two Round 2-documented paths:
+
+| Taxon | Trigger | Outcome | Spec coverage |
+| --- | --- | --- | --- |
+| (1) Transient FS/diff failure on an available pack | `scaffold.PackFS(pack)` or `upgrade.ComputeDiffsWithManifest` errors, pack is in `AvailablePacks()` | Preserve entries, keep pack in `Meta.Packs`, continue | Line 292 (`preservation`) |
+| (2) Pack removed from release | Pack not in `AvailablePacks()` | Drop entries, drop from `Meta.Packs`, emit `Notice`, leave disk files | Line 293 (`explicit drop`) |
+| (3) `AvailablePacks()` itself failed (NEW) | `scaffold.AvailablePacks()` returns error | Treat like (1) en bloc — preserve ALL installed packs' entries, keep all in `Meta.Packs`, skip per-pack loop, emit `Warning`, continue with base diff | **Not documented in spec** |
+
+Behavior is internally consistent: when pack enumeration itself fails we cannot tell taxa (1) from (2) for any individual pack, and the safer default is preservation (taxon 1 semantics generalized). If a pack was truly removed from the release, the next successful upgrade will classify it correctly under taxon 2. No regression on AC1–AC8.
+
+### Drift assessment — does this belong in the public spec?
+
+**User's hypothesis: "AvailablePacks fallback is an internal resilience detail — probably not required in the public spec."**
+
+**Verdict: I partially disagree — one sentence belongs in the spec.**
+
+Reasoning:
+
+- The stderr message `Warning: unable to list available packs: ... (preserving installed pack entries)` is user-facing output. Any user-facing string is a contract of sorts; surprising users by emitting it without documentation creates support noise.
+- The spec already describes the two sibling taxa (preservation vs explicit drop) in `docs/specs/2026-04-16-ralph-cli-tool.md:291-293` at a behavioral level ("what the user sees", not implementation details). Omitting the third taxon leaves an observable gap: a user seeing the `Warning` line cannot look up what it means.
+- The taxonomy section is explicitly about error-path behavior contract; the new path is a new error-path behavior, not a pure implementation detail.
+- Counter-argument: the *mechanism* (why `AvailablePacks()` might fail — embedded FS corruption, `ReadDir` failure) is indeed an internal detail and does not need to appear. The taxonomy bullet should describe the user-visible outcome only.
+
+**Recommended one-liner for `/sync-docs`** (to append as a third sub-bullet under the existing "pack の一時的失敗時のエントリ保持 vs release 削除時の明示的ドロップ" block around line 291):
+> *pack 列挙自体の失敗（fallback preservation）*: `scaffold.AvailablePacks()` が失敗した場合（埋め込み FS の破損等）、インストール済み全 pack のマニフェストエントリを一括保持し、`Meta.Packs` もそのまま引き継いで base ファイルの upgrade を続行する。`Warning: unable to list available packs: ... (preserving installed pack entries)` を stderr に出力する。pack 単位の diff は走らないため、真に削除された pack の検出（explicit drop 経路）は次回以降の成功した upgrade に繰り越される。
+
+This is a non-blocking drift flag — ship the code fix first if needed, then extend the spec.
+
+### Coverage gaps (non-blocking, for `/test` awareness)
+
+- `TestRunUpgrade_SurvivesAvailablePacksFailure` asserts manifest preservation but does not capture stderr to verify the exact `Warning: unable to list available packs` line. Round 2 flagged the same pattern for the pack-deletion notice (later fixed in Round 3 via stdout capture in `TestRunUpgrade_ReportsDeletedPackFileOnceThenDrops`). The same tightening could apply here.
+- The test uses `EmbeddedFS` swap with a MapFS that has no `templates/packs/` at all. This triggers the `fs.ReadDir` error path in `scaffold.AvailablePacks()`, but the alternative error path (e.g., `fs.Sub` failure) is not exercised. Low-risk, narrow branch.
+- No regression test confirms base-diff behavior under `apErr != nil` — the test only checks the manifest result, not that base files were actually upgraded. The MapFS does provide base templates that would differ from what `executeInit` wrote, but the assertion does not verify base content was rewritten. Could be tightened by comparing a base file's content post-upgrade.
+
+### Smallest useful additional check
+
+Capture `os.Stderr` inside `TestRunUpgrade_SurvivesAvailablePacksFailure` and assert it contains `"unable to list available packs"`. That one-line addition would lock in the user-facing warning signal (same pattern Round 3 applied to the pack-deletion notice). Non-blocking.
+
+### Round 4 verdict
+
+- **Verified**: `run-verify.sh` EXIT=0; `go vet ./...` clean; `gofmt -l internal/` clean; `TestRunUpgrade_SurvivesAvailablePacksFailure` green inside the golang verifier's `go test ./...` run; all prior Rounds' ACs remain Verified (the new behavior is strictly an additional fallback, not a contract change).
+- **Likely but unverified**: stderr content for the new Warning (no direct capture in the test); base-file content rewrites under the `apErr` branch (not asserted).
+- **Documentation drift (new, minor)**: one additional taxon bullet should be appended to `docs/specs/2026-04-16-ralph-cli-tool.md` around line 291–293 to cover the `AvailablePacks()`-failure preservation path. I partially disagree with the user's hypothesis that this is purely internal — the `Warning:` line is user-visible, and the spec already documents the other two error taxa at behavioral level, so omitting the third creates an observable gap. Non-blocking for this PR; flag to `/sync-docs`.
+
+**Overall Round 4 verdict: PASS (with minor doc-drift flag for `/sync-docs`)**
+
+No code-level blockers. Proceed to `/test`. Before `/pr`, `/sync-docs` should add the one-line taxon entry described above.
+
+### Round 4 artifacts
+
+- Raw Round 4 verification output: `docs/evidence/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss-round4.log`
+- This report (updated in-place): `docs/reports/verify-2026-04-21-fix-ralph-upgrade-manifest-hash-loss.md`

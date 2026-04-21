@@ -103,3 +103,32 @@ Spec lines 290–291 now match the post-`d16cb4d` implementation. No remaining d
 ### Round 3 verdict
 
 Spec bullet added for `ActionRemove` manifest drop behavior. No remaining doc drift identified by Verify Round 3. Ready for re-run of `/codex-review` and `/pr`.
+
+## Round 4 (post-codex-3)
+
+- Date: 2026-04-21
+- Trigger: Verify Round 4 flagged one remaining spec drift in `docs/specs/2026-04-16-ralph-cli-tool.md` around lines 291–293 (`#### 冪等性と自動修復` subsection, "pack の一時的失敗時のエントリ保持 vs release 削除時の明示的ドロップ" bullet). The two existing sub-bullets covered transient per-pack diff failures and release-removed packs, but a third sibling path — pack enumeration (`scaffold.AvailablePacks()`) itself failing — was not documented. That path produces a Warning on stderr, preserves all installed pack entries, and lets base-file upgrades continue.
+
+### Files updated
+
+| File | Change | Reason |
+| --- | --- | --- |
+| `docs/specs/2026-04-16-ralph-cli-tool.md` (appended a third sub-bullet after the `release で削除された pack` sub-bullet, inside the existing "pack の一時的失敗時のエントリ保持 vs release 削除時の明示的ドロップ" block) | Added `pack 列挙自体の失敗 (enumeration failure)` sub-bullet: when `scaffold.AvailablePacks()` itself fails, a Warning is emitted on stderr, all installed pack entries are preserved, and base-file upgrade proceeds. Pack-metadata breakage does not block base updates. | Commit history for this branch introduced the enumeration-failure early-exit at `internal/cli/upgrade.go:121-128`: if `apErr != nil`, every `installedPack` is fed through `preservePackEntries`, added to `retainedPacks`, then `installedPacks` is set to `nil` to skip the per-pack diff loop. This is a distinct third failure taxon from the existing two (per-pack PackFS / diff failures preserve only that one pack; release-removed packs drop tracking). Without this bullet, the spec implied pack failures only occur inside the per-pack loop. |
+
+### Scope discipline
+
+- Only the single targeted sub-bullet was appended under the existing `#### 冪等性と自動修復` > "pack の一時的失敗時のエントリ保持 vs release 削除時の明示的ドロップ" block. The two existing sub-bullets (transient preservation, release explicit drop) and all surrounding bullets (same-version idempotency, empty-hash heal, pack namespacing, ActionRemove drop) were not modified.
+- No implementation or test files modified.
+- `AGENTS.md` / `CLAUDE.md` / `README.md` / `docs/recipes/*` / `.claude/rules/*` / `docs/quality/*` untouched — the enumeration-failure fallback is a defensive branch inside the existing upgrade command, not a new public surface. The `internal/upgrade/` repo-map description in `AGENTS.md` remains accurate.
+
+### Evidence
+
+- Verify Round 4 drift recommendation (lines 291–293 of the spec, pack-failure bullet area).
+- Implementation anchor for the new spec wording:
+  - `internal/cli/upgrade.go:109` — `availablePacks, apErr := scaffold.AvailablePacks()`.
+  - `internal/cli/upgrade.go:121-128` — enumeration-failure branch: Warning, preserve all installed pack entries, push to `retainedPacks`, then `installedPacks = nil` to skip per-pack diffing while `baseManifest` diffs (line 102–103) continue unaffected.
+  - Contrast anchors: `internal/cli/upgrade.go:144-150` (per-pack PackFS failure) and `internal/cli/upgrade.go:139-141` (release-removed drop) — the two previously-documented paths.
+
+### Round 4 verdict
+
+Third pack-failure taxon (enumeration failure) now documented alongside transient per-pack failure and release-removed drop. Spec and implementation aligned on all three failure paths. No remaining doc drift identified by Verify Round 4. Ready for re-run of `/codex-review` and `/pr`.
