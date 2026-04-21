@@ -31,27 +31,35 @@ type FileDiff struct {
 // ComputeDiffs compares the manifest, disk state, and new template to determine actions.
 // Use CheckRemovals=true only for the primary (base) FS, not for supplementary pack FSes.
 func ComputeDiffs(manifestPath string, targetDir string, newFS fs.FS) ([]FileDiff, error) {
-	return computeDiffsOpts(manifestPath, targetDir, newFS, true)
+	manifest, err := scaffold.ReadManifest(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	return ComputeDiffsWithManifest(manifest, targetDir, newFS, true)
 }
 
 // ComputeDiffsNoRemovals is like ComputeDiffs but skips removal detection.
 // Use for supplementary FS layers (language packs) where missing base files
 // should not trigger removal notifications.
 func ComputeDiffsNoRemovals(manifestPath string, targetDir string, newFS fs.FS) ([]FileDiff, error) {
-	return computeDiffsOpts(manifestPath, targetDir, newFS, false)
-}
-
-func computeDiffsOpts(manifestPath string, targetDir string, newFS fs.FS, checkRemovals bool) ([]FileDiff, error) {
 	manifest, err := scaffold.ReadManifest(manifestPath)
 	if err != nil {
 		return nil, err
 	}
+	return ComputeDiffsWithManifest(manifest, targetDir, newFS, false)
+}
 
+// ComputeDiffsWithManifest compares a pre-parsed manifest, disk state, and new
+// template to determine actions. The caller can provide a scoped subset of the
+// full manifest (e.g. base entries only, or pack-scoped entries with the pack
+// prefix stripped) so that removal detection and key lookups operate over the
+// correct namespace.
+func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, newFS fs.FS, checkRemovals bool) ([]FileDiff, error) {
 	var diffs []FileDiff
 
 	// Walk new template to find adds and updates.
 	newFiles := make(map[string]bool)
-	err = fs.WalkDir(newFS, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(newFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -65,8 +73,31 @@ func computeDiffsOpts(manifestPath string, targetDir string, newFS fs.FS, checkR
 
 		mf, inManifest := manifest.Files[path]
 
+		// Peek at disk state up front so the ActionAdd path can distinguish
+		// a safe add (disk missing or already matches template) from a
+		// potentially overwriting add (disk has different content — e.g. a
+		// file that was previously removed from the template, kept locally
+		// by the user, and now reintroduced in a later release).
+		diskPath := filepath.Join(targetDir, path)
+		diskHash, diskErr := scaffold.HashFile(diskPath)
+
 		if !inManifest {
-			// New file not in manifest → add.
+			// New file not in manifest. If disk has something different,
+			// surface as a conflict so the user is asked rather than
+			// silently overwritten. OldHash=newHash mirrors the empty-hash
+			// heal contract: skip writes the template hash into the
+			// manifest so the next upgrade resolves cleanly.
+			if diskErr == nil && diskHash != newHash {
+				diffs = append(diffs, FileDiff{
+					Path:       path,
+					Action:     ActionConflict,
+					OldHash:    newHash,
+					DiskHash:   diskHash,
+					NewHash:    newHash,
+					NewContent: content,
+				})
+				return nil
+			}
 			diffs = append(diffs, FileDiff{
 				Path:       path,
 				Action:     ActionAdd,
@@ -75,10 +106,6 @@ func computeDiffsOpts(manifestPath string, targetDir string, newFS fs.FS, checkR
 			})
 			return nil
 		}
-
-		// File exists in manifest. Check disk state.
-		diskPath := filepath.Join(targetDir, path)
-		diskHash, diskErr := scaffold.HashFile(diskPath)
 
 		if diskErr != nil {
 			// File in manifest but missing on disk → treat as add.
@@ -91,11 +118,48 @@ func computeDiffsOpts(manifestPath string, targetDir string, newFS fs.FS, checkR
 			return nil
 		}
 
+		// Heal corrupted manifest entries where hash is empty (caused by a
+		// prior bug that wrote ActionSkip entries without a hash). Treat
+		// "disk matches new template" as equivalent to an unchanged file and
+		// silently repair the manifest hash. If disk differs, fall through to
+		// the conflict path so the user is still asked.
+		if mf.Hash == "" {
+			if diskHash == newHash {
+				diffs = append(diffs, FileDiff{
+					Path:     path,
+					Action:   ActionSkip,
+					OldHash:  mf.Hash,
+					DiskHash: diskHash,
+					NewHash:  newHash,
+				})
+				return nil
+			}
+			// Empty-hash heal + user edit: use newHash as OldHash so the
+			// "skip" resolution path rewrites the manifest with a real
+			// hash, ending the perpetual-conflict loop on non-interactive
+			// re-runs. If the user overwrites, they accept the template;
+			// if they skip, we mark the template as the new baseline and
+			// let future upgrades detect edits against it.
+			diffs = append(diffs, FileDiff{
+				Path:       path,
+				Action:     ActionConflict,
+				OldHash:    newHash,
+				DiskHash:   diskHash,
+				NewHash:    newHash,
+				NewContent: content,
+			})
+			return nil
+		}
+
 		// Template hasn't changed → skip regardless of user edits.
+		// Carry NewHash so callers can rewrite the manifest with a real hash.
 		if newHash == mf.Hash {
 			diffs = append(diffs, FileDiff{
-				Path:   path,
-				Action: ActionSkip,
+				Path:     path,
+				Action:   ActionSkip,
+				OldHash:  mf.Hash,
+				DiskHash: diskHash,
+				NewHash:  newHash,
 			})
 			return nil
 		}
