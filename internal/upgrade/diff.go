@@ -73,8 +73,28 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 
 		mf, inManifest := manifest.Files[path]
 
+		// Peek at disk state up front so the ActionAdd path can distinguish
+		// a safe add (disk missing or already matches template) from a
+		// potentially overwriting add (disk has different content — e.g. a
+		// file that was previously removed from the template, kept locally
+		// by the user, and now reintroduced in a later release).
+		diskPath := filepath.Join(targetDir, path)
+		diskHash, diskErr := scaffold.HashFile(diskPath)
+
 		if !inManifest {
-			// New file not in manifest → add.
+			// New file not in manifest. If disk has something different,
+			// surface as a conflict so the user is asked rather than
+			// silently overwritten.
+			if diskErr == nil && diskHash != newHash {
+				diffs = append(diffs, FileDiff{
+					Path:       path,
+					Action:     ActionConflict,
+					DiskHash:   diskHash,
+					NewHash:    newHash,
+					NewContent: content,
+				})
+				return nil
+			}
 			diffs = append(diffs, FileDiff{
 				Path:       path,
 				Action:     ActionAdd,
@@ -83,10 +103,6 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 			})
 			return nil
 		}
-
-		// File exists in manifest. Check disk state.
-		diskPath := filepath.Join(targetDir, path)
-		diskHash, diskErr := scaffold.HashFile(diskPath)
 
 		if diskErr != nil {
 			// File in manifest but missing on disk → treat as add.
@@ -115,10 +131,16 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 				})
 				return nil
 			}
+			// Empty-hash heal + user edit: use newHash as OldHash so the
+			// "skip" resolution path rewrites the manifest with a real
+			// hash, ending the perpetual-conflict loop on non-interactive
+			// re-runs. If the user overwrites, they accept the template;
+			// if they skip, we mark the template as the new baseline and
+			// let future upgrades detect edits against it.
 			diffs = append(diffs, FileDiff{
 				Path:       path,
 				Action:     ActionConflict,
-				OldHash:    mf.Hash,
+				OldHash:    newHash,
 				DiskHash:   diskHash,
 				NewHash:    newHash,
 				NewContent: content,

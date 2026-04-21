@@ -228,6 +228,9 @@ func TestComputeDiffs_HealsEmptyHash_WhenDiskMatchesTemplate(t *testing.T) {
 
 // Empty-hash entries where disk differs from template must still surface as
 // conflicts so the user is asked instead of silently overwriting edits.
+// Additionally, the conflict must carry OldHash=newHash so that a non-
+// interactive "skip" resolution rewrites the manifest with a real hash
+// and ends the perpetual-conflict loop.
 func TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "file.md"), []byte("user edit"), 0644); err != nil {
@@ -236,8 +239,9 @@ func TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers(t *testing.T) {
 	m := scaffold.NewManifest("0.1.0")
 	m.SetFile("file.md", "")
 
+	template := []byte("template")
 	newFS := fstest.MapFS{
-		"file.md": {Data: []byte("template")},
+		"file.md": {Data: template},
 	}
 
 	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
@@ -248,6 +252,60 @@ func TestComputeDiffs_EmptyHashConflictsWhenDiskDiffers(t *testing.T) {
 		t.Fatalf("diffs = %d, want 1", len(diffs))
 	}
 	if diffs[0].Action != ActionConflict {
-		t.Errorf("action = %d, want ActionConflict", diffs[0].Action)
+		t.Fatalf("action = %d, want ActionConflict", diffs[0].Action)
+	}
+	wantHash := scaffold.HashBytes(template)
+	if diffs[0].OldHash != wantHash {
+		t.Errorf("OldHash = %q, want newHash %q (heal contract)", diffs[0].OldHash, wantHash)
+	}
+}
+
+// Regression: a file absent from the manifest but present on disk with
+// content that differs from the template must surface as ActionConflict,
+// not ActionAdd. Prior behavior would silently overwrite the user's file
+// when a later template release reintroduced a previously-removed path.
+func TestComputeDiffs_AddBecomesConflictWhenDiskDiffers(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "returning.md"), []byte("user kept this"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := scaffold.NewManifest("0.1.0") // no entry for returning.md
+
+	newFS := fstest.MapFS{
+		"returning.md": {Data: []byte("new template version")},
+	}
+
+	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diffs) != 1 {
+		t.Fatalf("diffs = %d, want 1", len(diffs))
+	}
+	if diffs[0].Action != ActionConflict {
+		t.Fatalf("action = %d, want ActionConflict (reintroduction safeguard)", diffs[0].Action)
+	}
+}
+
+// Ada: if the disk file already matches the new template, ActionAdd is safe
+// (no conflict prompt needed). This covers the no-op re-add case.
+func TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("identical")
+	if err := os.WriteFile(filepath.Join(dir, "same.md"), content, 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := scaffold.NewManifest("0.1.0")
+
+	newFS := fstest.MapFS{
+		"same.md": {Data: content},
+	}
+
+	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diffs) != 1 || diffs[0].Action != ActionAdd {
+		t.Fatalf("action = %v, want ActionAdd", diffs)
 	}
 }

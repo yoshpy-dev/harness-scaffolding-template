@@ -72,4 +72,18 @@ Categories: false-positive, already-addressed, style-preference, out-of-scope, c
 |---|---------------|------------------|-------------------|
 | 5 | [P2] Don't abort the whole upgrade when pack listing fails — `internal/cli/upgrade.go:109-111`. `scaffold.AvailablePacks()` が error を返すと `runUpgrade` が base 差分を書き込まずに即 return。以前はどんな pack 関連エラーも warning 降格で base upgrade は継続していた。私の Finding 2 fix で新たに導入した abort パス。| 真の regression（Round 2 で新規に導入したもの）。production では `embed.FS.ReadDir` が失敗する可能性は極小だが、テスト注入 FS や将来の embed 構造変更で発火し得る。修正方針: error を warn に降格し、availablePacks が得られない場合は全 pack エントリを preservation 扱いにして base upgrade を継続する（transient fallback 相当）。Axis1=Yes, Axis2=Yes。修正は 5 行程度。| `internal/cli/upgrade.go:109-116` |
 
+---
+
+## Round 4 (post-0d1c4b0)
+
+- Codex findings: 2 (both P2)
+- After triage: ACTION_REQUIRED=2, WORTH_CONSIDERING=0, DISMISSED=0
+
+### ACTION_REQUIRED
+
+| # | Codex finding | Triage rationale | Affected file(s) |
+|---|---------------|------------------|-------------------|
+| 6 | [P2] Preserve hash provenance for edited empty-hash repairs — `internal/upgrade/diff.go:118-124`. 破損マニフェスト (`hash=""`) × ユーザ編集で `ActionConflict` が発火するが `OldHash="" ` のまま返る。`runUpgrade` の skip 分岐は `manifest.SetFile(d.Path, d.OldHash)` で空文字を書き戻すので、非対話モードや skip 選択時に heal が完了せず同じファイルが永遠に conflict する。| 真の regression。heal は「壊れたマニフェストを無風で直す」契約のはずが、user-edited ケースで無限 loop。修正方針: heal 時の `ActionConflict` で `OldHash: newHash` を詰める（template を新しい baseline として採用）。skip 選択で newHash が書き戻され、次回 upgrade は `newHash == mf.Hash` で ActionSkip に落ちる。Axis1=Yes, Axis2=Yes。1行変更。| `internal/upgrade/diff.go:118-124` |
+| 7 | [P2] Keep removed-file provenance after the first warning — `internal/cli/upgrade.go:235-241`. `ActionRemove` 後にマニフェストエントリを drop すると最後の template hash が失われる。ユーザが "review and delete manually" 通知後もファイルを残し、後のリリースで同じ path が復活した場合、`ComputeDiffsWithManifest` はマニフェストにエントリが無いので `ActionAdd` と分類し、disk を無警告で上書きする → silent data loss。| 本当の data-loss path。edge case だが serious。修正方針: `ActionAdd` 側で disk 存在 + 内容差を検出し、`ActionConflict` に格上げする（disk 無し or 同一内容なら従来通り Add）。これで reintroduction でも user に conflict prompt が出る。Axis1=Yes, Axis2=Yes。約10行の変更。| `internal/upgrade/diff.go:69-77` (ActionAdd path), `internal/cli/upgrade.go:210-219` |
+
 
