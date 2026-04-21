@@ -33,16 +33,16 @@ auto-updates unchanged files, and prompts for conflict resolution on edited file
 	return cmd
 }
 
-// packPrefixFor returns the namespace prefix used for a pack's files in the
-// project manifest (e.g. "packs/languages/golang/").
-func packPrefixFor(pack string) string {
-	return filepath.ToSlash(filepath.Join("packs", "languages", pack)) + "/"
-}
+// packNamespacePrefix is the root namespace for all language pack entries in
+// the manifest. Keys under this prefix are pack-scoped and must not
+// participate in base-level removal detection.
+const packNamespacePrefix = "packs/languages/"
 
-// basePrefix is the namespace prefix reserved for language pack entries in the
-// manifest. Any key under this prefix is scoped to a pack, not the base
-// scaffold, and must not participate in base-level removal detection.
-const basePrefix = "packs/languages/"
+// packPrefixFor returns the namespace prefix used for a specific pack's files
+// in the project manifest (e.g. "packs/languages/golang/").
+func packPrefixFor(pack string) string {
+	return packNamespacePrefix + pack + "/"
+}
 
 // splitManifestForBase returns a manifest containing only base entries, i.e.
 // those not namespaced under any language pack. This lets the base diff sweep
@@ -52,7 +52,7 @@ func splitManifestForBase(m *scaffold.Manifest) *scaffold.Manifest {
 	out.Meta = m.Meta
 	out.Files = make(map[string]scaffold.ManifestFile, len(m.Files))
 	for k, v := range m.Files {
-		if strings.HasPrefix(filepath.ToSlash(k), basePrefix) {
+		if strings.HasPrefix(filepath.ToSlash(k), packNamespacePrefix) {
 			continue
 		}
 		out.Files[k] = v
