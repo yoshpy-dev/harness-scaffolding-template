@@ -141,8 +141,8 @@
 ## Progress checklist
 
 - [x] Plan reviewed
-- [ ] Branch created
-- [ ] Implementation started
+- [x] Branch created
+- [x] Implementation started
 - [ ] Review artifact created
 - [ ] Verification artifact created
 - [ ] Test artifact created
