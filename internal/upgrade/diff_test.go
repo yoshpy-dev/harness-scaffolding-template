@@ -294,6 +294,161 @@ func TestComputeDiffs_AddBecomesConflictWhenDiskDiffers(t *testing.T) {
 	}
 }
 
+// Template unchanged but disk drifted from the recorded hash: must surface as
+// a conflict so the user is asked to keep the local variant, overwrite, or
+// view a diff. Prior behavior silently ActionSkip'd and never noticed the
+// local edit.
+func TestComputeDiffs_LocalEditWithUnchangedTemplate(t *testing.T) {
+	dir, manifestPath := setupTestProject(t)
+
+	// User edits the file locally; template does NOT change.
+	if err := os.WriteFile(filepath.Join(dir, "file.md"), []byte("user edit"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	newFS := fstest.MapFS{
+		"file.md": {Data: []byte("original")}, // same as manifest hash
+	}
+
+	diffs, err := ComputeDiffs(manifestPath, dir, newFS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diffs) != 1 {
+		t.Fatalf("diffs = %d, want 1", len(diffs))
+	}
+	if diffs[0].Action != ActionConflict {
+		t.Errorf("action = %d, want ActionConflict (template unchanged + local edit)", diffs[0].Action)
+	}
+	if diffs[0].NewContent == nil {
+		t.Errorf("NewContent must be populated so the diff viewer can render template side")
+	}
+	if diffs[0].DiskHash == diffs[0].OldHash {
+		t.Errorf("DiskHash %q should differ from OldHash %q (disk drifted)", diffs[0].DiskHash, diffs[0].OldHash)
+	}
+}
+
+// Manifest entries marked Managed=false represent files the user has taken
+// ownership of via a prior skip resolution. They must silent-skip regardless
+// of template changes or disk drift until an explicit resync brings them back
+// under template management.
+func TestComputeDiffs_Unmanaged_IsSilentSkip(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "owned.md"), []byte("user owned"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := scaffold.NewManifest("0.1.0")
+	m.SetFileUnmanaged("owned.md", scaffold.HashBytes([]byte("user owned")))
+
+	// Even when the template diverges, the unmanaged entry must not
+	// surface as auto-update or conflict.
+	newFS := fstest.MapFS{
+		"owned.md": {Data: []byte("template wants to change this")},
+	}
+
+	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diffs) != 1 {
+		t.Fatalf("diffs = %d, want 1", len(diffs))
+	}
+	if diffs[0].Action != ActionSkip {
+		t.Errorf("action = %d, want ActionSkip (unmanaged → silent)", diffs[0].Action)
+	}
+}
+
+// Unmanaged entries must survive template-side removal. Prior behavior emitted
+// ActionRemove which dropped the manifest entry, breaking the "user owns this
+// forever until --resync" contract when the template later reintroduced the
+// same path (the reintroduction became an add/conflict instead of silent skip).
+func TestComputeDiffs_Unmanaged_SurvivesTemplateRemoval(t *testing.T) {
+	dir := t.TempDir()
+	m := scaffold.NewManifest("0.1.0")
+	m.SetFileUnmanaged("kept-by-user.md", "sha256:userhash")
+
+	// Template no longer ships kept-by-user.md.
+	newFS := fstest.MapFS{
+		"other.md": {Data: []byte("other")},
+	}
+
+	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skipFound bool
+	for _, d := range diffs {
+		if d.Path == "kept-by-user.md" {
+			if d.Action != ActionSkip {
+				t.Errorf("action = %d, want ActionSkip (unmanaged must survive removal)", d.Action)
+			}
+			skipFound = true
+		}
+		if d.Path == "kept-by-user.md" && d.Action == ActionRemove {
+			t.Error("unmanaged entry must not surface as ActionRemove")
+		}
+	}
+	if !skipFound {
+		t.Error("unmanaged entry missing from diffs — it was silently dropped")
+	}
+}
+
+// Unmanaged-skip entries must carry NewContent so the caller can re-adopt
+// them under `--force`. Without this, the force path cannot restore template
+// coverage in one invocation.
+func TestComputeDiffs_Unmanaged_CarriesNewContentForForceReadoption(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "owned.md"), []byte("local"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := scaffold.NewManifest("0.1.0")
+	m.SetFileUnmanaged("owned.md", scaffold.HashBytes([]byte("local")))
+
+	template := []byte("template content")
+	newFS := fstest.MapFS{
+		"owned.md": {Data: template},
+	}
+
+	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diffs) != 1 {
+		t.Fatalf("diffs = %d, want 1", len(diffs))
+	}
+	if diffs[0].NewContent == nil {
+		t.Error("unmanaged skip must carry NewContent so --force can re-adopt")
+	}
+	if string(diffs[0].NewContent) != string(template) {
+		t.Errorf("NewContent = %q, want template bytes", diffs[0].NewContent)
+	}
+}
+
+// Unmanaged entries where the user later deletes the file on disk must also
+// silent-skip: the entry exists to block re-adoption, not to enforce
+// presence. This prevents a surprise re-add if the template still ships the
+// file.
+func TestComputeDiffs_Unmanaged_SilentSkipWhenDiskMissing(t *testing.T) {
+	dir := t.TempDir()
+	m := scaffold.NewManifest("0.1.0")
+	m.SetFileUnmanaged("gone.md", "deadbeef")
+
+	newFS := fstest.MapFS{
+		"gone.md": {Data: []byte("template content")},
+	}
+
+	diffs, err := ComputeDiffsWithManifest(m, dir, newFS, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diffs) != 1 {
+		t.Fatalf("diffs = %d, want 1", len(diffs))
+	}
+	if diffs[0].Action != ActionSkip {
+		t.Errorf("action = %d, want ActionSkip (unmanaged + missing disk → silent)", diffs[0].Action)
+	}
+}
+
 // Safe-add: if the disk file already matches the new template, ActionAdd is safe
 // (no conflict prompt needed). This covers the no-op re-add case.
 func TestComputeDiffs_AddStaysAddWhenDiskMatchesTemplate(t *testing.T) {

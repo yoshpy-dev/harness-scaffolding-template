@@ -66,10 +66,23 @@ func (m *Manifest) Write(path string) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// SetFile records a file in the manifest.
+// SetFile records a file in the manifest as managed (i.e. tracked against the
+// template for future upgrades).
 func (m *Manifest) SetFile(relPath, hash string) {
 	m.Files[relPath] = ManifestFile{
 		Hash:    hash,
 		Managed: true,
+	}
+}
+
+// SetFileUnmanaged records a file in the manifest as user-owned. The ralph
+// upgrade flow uses this when the user chooses to keep a local variant over
+// the template: the entry is preserved (so the path is not mistaken for a
+// "new file" on later upgrades) but marked so future runs skip it silently
+// instead of re-prompting.
+func (m *Manifest) SetFileUnmanaged(relPath, hash string) {
+	m.Files[relPath] = ManifestFile{
+		Hash:    hash,
+		Managed: false,
 	}
 }

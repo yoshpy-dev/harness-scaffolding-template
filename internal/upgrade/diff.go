@@ -81,6 +81,24 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 		diskPath := filepath.Join(targetDir, path)
 		diskHash, diskErr := scaffold.HashFile(diskPath)
 
+		// User-accepted local variant: a prior `ralph upgrade` run recorded
+		// Managed=false for this path (the user chose skip on a conflict).
+		// Respect that ownership and silent-skip regardless of disk/template
+		// drift until an explicit resync (or `--force`) brings the file back
+		// under template management. NewContent is carried so the caller can
+		// implement re-adoption without a second FS walk.
+		if inManifest && !mf.Managed {
+			diffs = append(diffs, FileDiff{
+				Path:       path,
+				Action:     ActionSkip,
+				OldHash:    mf.Hash,
+				DiskHash:   diskHash,
+				NewHash:    newHash,
+				NewContent: content,
+			})
+			return nil
+		}
+
 		if !inManifest {
 			// New file not in manifest. If disk has something different,
 			// surface as a conflict so the user is asked rather than
@@ -151,15 +169,29 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 			return nil
 		}
 
-		// Template hasn't changed → skip regardless of user edits.
-		// Carry NewHash so callers can rewrite the manifest with a real hash.
+		// Template hasn't changed. If disk matches the recorded hash, the file
+		// is untouched → skip. If disk drifted from the recorded hash, the
+		// user edited a managed file locally: surface it as a conflict so the
+		// user can choose overwrite / skip / diff. Skip resolution writes
+		// Managed=false, converging subsequent upgrades to silent skip.
 		if newHash == mf.Hash {
+			if diskHash == mf.Hash {
+				diffs = append(diffs, FileDiff{
+					Path:     path,
+					Action:   ActionSkip,
+					OldHash:  mf.Hash,
+					DiskHash: diskHash,
+					NewHash:  newHash,
+				})
+				return nil
+			}
 			diffs = append(diffs, FileDiff{
-				Path:     path,
-				Action:   ActionSkip,
-				OldHash:  mf.Hash,
-				DiskHash: diskHash,
-				NewHash:  newHash,
+				Path:       path,
+				Action:     ActionConflict,
+				OldHash:    mf.Hash,
+				DiskHash:   diskHash,
+				NewHash:    newHash,
+				NewContent: content,
 			})
 			return nil
 		}
@@ -193,17 +225,29 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 		return nil, err
 	}
 
-	// Check for files in manifest that are no longer in the template → remove notification.
+	// Check for files in manifest that are no longer in the template.
 	// Only performed for the primary FS (base), not for supplementary pack FSes.
+	// Managed=false entries are preserved as ActionSkip across template
+	// removals so the "user-owned forever until resync" contract survives
+	// arbitrary template changes (including path deletions).
 	if checkRemovals {
-		for path := range manifest.Files {
-			if !newFiles[path] {
+		for path, mf := range manifest.Files {
+			if newFiles[path] {
+				continue
+			}
+			if !mf.Managed {
 				diffs = append(diffs, FileDiff{
 					Path:    path,
-					Action:  ActionRemove,
-					OldHash: manifest.Files[path].Hash,
+					Action:  ActionSkip,
+					OldHash: mf.Hash,
 				})
+				continue
 			}
+			diffs = append(diffs, FileDiff{
+				Path:    path,
+				Action:  ActionRemove,
+				OldHash: mf.Hash,
+			})
 		}
 	}
 
