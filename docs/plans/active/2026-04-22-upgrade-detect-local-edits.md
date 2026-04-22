@@ -55,19 +55,19 @@
 
 ## Acceptance criteria
 
-- [ ] テンプレート未変更 + ローカル編集ありで `ralph upgrade` を実行すると conflict プロンプトが出る（`ActionConflict`）
-- [ ] テンプレート未変更 + ローカル編集なしは依然 `ActionSkip`（manifest 空ハッシュの heal も含めて回帰なし）
-- [ ] テンプレート変更 + ローカル編集ありも従来通り `ActionConflict`
-- [ ] `[d]iff` を選択すると `--- local` / `+++ template (version)` の unified diff が出力され、変更行に `-` / `+`、周辺行に空白プレフィクスが付く（local → template の方向で、`-` はローカル側の行、`+` はテンプレート側の行）
-- [ ] `[d]iff` 表示後に `[o]verwrite / [s]kip / [d]iff` を再度プロンプトし、`d` の連打でループに入らない（2 度目の `d` 入力は無視 or 再表示、入力 EOF で skip）
-- [ ] disk 読み取り失敗時は警告を出し、hash サマリ付きで選択肢継続（abort しない）
-- [ ] `overwrite` 選択でローカルがテンプレート内容に一致し、manifest が `{Hash: newHash, Managed: true}` に更新される
-- [ ] `skip` 選択でローカルが維持され、manifest エントリが `{Hash: diskHash, Managed: false}` に更新される（次回 upgrade で silent skip 収束）
-- [ ] `Managed=false` のエントリは `ComputeDiffsWithManifest` で `ActionSkip` になり、プロンプトも auto-update も発生しない
-- [ ] `ralph upgrade --force` は従来通り全て上書き（`Managed` は true に戻る）
-- [ ] `--force` は `Managed=false` エントリも再管理下に戻す（テンプレート内容を書き込み、manifest を `{Hash: newHash, Managed: true}` に flip）
-- [ ] `Managed=false` エントリはテンプレート側から削除されても manifest から drop されず silent skip で維持される（user-owned 契約がテンプレート変更を跨いで生存）
-- [ ] `./scripts/run-verify.sh` と `go test ./...` が緑
+- [x] テンプレート未変更 + ローカル編集ありで `ralph upgrade` を実行すると conflict プロンプトが出る（`ActionConflict`）
+- [x] テンプレート未変更 + ローカル編集なしは依然 `ActionSkip`（manifest 空ハッシュの heal も含めて回帰なし）
+- [x] テンプレート変更 + ローカル編集ありも従来通り `ActionConflict`
+- [x] `[d]iff` を選択すると `--- local` / `+++ template (version)` の unified diff が出力され、変更行に `-` / `+`、周辺行に空白プレフィクスが付く（local → template の方向で、`-` はローカル側の行、`+` はテンプレート側の行）
+- [x] `[d]iff` 表示後に `[o]verwrite / [s]kip / [d]iff` を再度プロンプトし、`d` の連打でループに入らない（2 度目の `d` 入力は無視 or 再表示、入力 EOF で skip）
+- [x] disk 読み取り失敗時は警告を出し、hash サマリ付きで選択肢継続（abort しない）
+- [x] `overwrite` 選択でローカルがテンプレート内容に一致し、manifest が `{Hash: newHash, Managed: true}` に更新される
+- [x] `skip` 選択でローカルが維持され、manifest エントリが `{Hash: diskHash, Managed: false}` に更新される（次回 upgrade で silent skip 収束）
+- [x] `Managed=false` のエントリは `ComputeDiffsWithManifest` で `ActionSkip` になり、プロンプトも auto-update も発生しない
+- [x] `ralph upgrade --force` は従来通り全て上書き（`Managed` は true に戻る）
+- [x] `--force` は `Managed=false` エントリも再管理下に戻す（テンプレート内容を書き込み、manifest を `{Hash: newHash, Managed: true}` に flip）
+- [x] `Managed=false` エントリはテンプレート側から削除されても manifest から drop されず silent skip で維持される（user-owned 契約がテンプレート変更を跨いで生存）
+- [x] `./scripts/run-verify.sh` と `go test ./...` が緑
 
 ## Implementation outline
 
@@ -158,7 +158,8 @@
 - [x] Implementation started
 - [x] Acceptance criteria met (unit + integration tests)
 - [x] `./scripts/run-verify.sh` green
-- [x] Review artifact created (`docs/reports/self-review-2026-04-22-upgrade-detect-local-edits.md`)
-- [x] Verification artifact created (`docs/reports/verify-2026-04-22-upgrade-detect-local-edits.md`)
-- [x] Test artifact created (`docs/reports/test-2026-04-22-upgrade-detect-local-edits.md`)
+- [x] Review artifact created (`docs/reports/self-review-2026-04-22-upgrade-detect-local-edits.md`; pass 2 `…-pass2.md`)
+- [x] Verification artifact created (`docs/reports/verify-2026-04-22-upgrade-detect-local-edits.md`; pass 2 `…-pass2.md`)
+- [x] Test artifact created (`docs/reports/test-2026-04-22-upgrade-detect-local-edits.md`; pass 2 `…-pass2.md`)
+- [x] Sync-docs artifact created (`docs/reports/sync-docs-2026-04-22-upgrade-detect-local-edits.md`)
 - [ ] PR created
