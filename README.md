@@ -144,9 +144,9 @@ Core scaffold stays stack-agnostic. Language-specific depth lives in `packs/lang
 Add a pack:
 
 ```sh
-ralph pack add go
+ralph pack add golang
 # or
-./scripts/new-language-pack.sh go
+./scripts/new-language-pack.sh golang
 ```
 
 Wire it into `packs/languages/<name>/verify.sh`, `.claude/rules/<name>.md`, and project build/test tooling.
