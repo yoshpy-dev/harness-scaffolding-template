@@ -609,7 +609,7 @@ func TestRunUpgrade_InteractiveDiff_ShowsUnifiedDiff(t *testing.T) {
 // Invalid prompt input (blank line, unknown token) must re-prompt without
 // terminating. Repeated `d` entries must re-render the diff cleanly instead
 // of collapsing into a broken loop.
-func TestRunUpgrade_InteractiveDiff_ReprompltsOnInvalid(t *testing.T) {
+func TestRunUpgrade_InteractiveDiff_RepromptsOnInvalid(t *testing.T) {
 	setupTestEmbedFS(t)
 	Version = "1.0.0-test"
 

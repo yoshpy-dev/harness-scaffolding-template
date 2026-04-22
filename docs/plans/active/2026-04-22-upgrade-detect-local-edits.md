@@ -58,7 +58,7 @@
 - [ ] テンプレート未変更 + ローカル編集ありで `ralph upgrade` を実行すると conflict プロンプトが出る（`ActionConflict`）
 - [ ] テンプレート未変更 + ローカル編集なしは依然 `ActionSkip`（manifest 空ハッシュの heal も含めて回帰なし）
 - [ ] テンプレート変更 + ローカル編集ありも従来通り `ActionConflict`
-- [ ] `[d]iff` を選択すると `--- template (version)` / `+++ local` の unified diff が出力され、変更行に `-` / `+`、周辺行に空白プレフィクスが付く
+- [ ] `[d]iff` を選択すると `--- local` / `+++ template (version)` の unified diff が出力され、変更行に `-` / `+`、周辺行に空白プレフィクスが付く（local → template の方向で、`-` はローカル側の行、`+` はテンプレート側の行）
 - [ ] `[d]iff` 表示後に `[o]verwrite / [s]kip / [d]iff` を再度プロンプトし、`d` の連打でループに入らない（2 度目の `d` 入力は無視 or 再表示、入力 EOF で skip）
 - [ ] disk 読み取り失敗時は警告を出し、hash サマリ付きで選択肢継続（abort しない）
 - [ ] `overwrite` 選択でローカルがテンプレート内容に一致し、manifest が `{Hash: newHash, Managed: true}` に更新される
