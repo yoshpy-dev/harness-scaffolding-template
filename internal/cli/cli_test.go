@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -439,6 +440,310 @@ func TestRunUpgrade_SurvivesAvailablePacksFailure(t *testing.T) {
 	if !found {
 		t.Error("golang missing from Meta.Packs after AvailablePacks failure")
 	}
+}
+
+// Force flag must overwrite local edits without prompting. Verifies the
+// non-interactive regression path for users who explicitly opt in to
+// template-wins behavior.
+func TestRunUpgrade_ForceOverwritesLocalEdit(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	// User edits a managed file.
+	agents := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# local edit\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runUpgrade(dir, true); err != nil {
+		t.Fatalf("upgrade --force: %v", err)
+	}
+
+	got, err := os.ReadFile(agents)
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if string(got) != "# AGENTS\n" {
+		t.Errorf("AGENTS.md = %q, want template content restored", got)
+	}
+
+	m, err := scaffold.ReadManifest(filepath.Join(dir, ".ralph", "manifest.toml"))
+	if err != nil {
+		t.Fatalf("ReadManifest: %v", err)
+	}
+	if !m.Files["AGENTS.md"].Managed {
+		t.Errorf("force overwrite should keep AGENTS.md Managed=true")
+	}
+}
+
+// Interactive "overwrite" path: disk returns to template content and the
+// manifest stays Managed=true so subsequent template changes auto-update.
+func TestRunUpgrade_InteractiveOverwrite_WritesManaged(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agents := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# local edit\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := runUpgradeIO(dir, false, strings.NewReader("o\n"), &out, &errOut); err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+
+	got, err := os.ReadFile(agents)
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if string(got) != "# AGENTS\n" {
+		t.Errorf("AGENTS.md = %q, want template content", got)
+	}
+
+	m, err := scaffold.ReadManifest(filepath.Join(dir, ".ralph", "manifest.toml"))
+	if err != nil {
+		t.Fatalf("ReadManifest: %v", err)
+	}
+	entry := m.Files["AGENTS.md"]
+	if !entry.Managed {
+		t.Errorf("AGENTS.md.Managed = false after overwrite, want true")
+	}
+	if entry.Hash != scaffold.HashBytes([]byte("# AGENTS\n")) {
+		t.Errorf("AGENTS.md hash not updated to template hash: got %q", entry.Hash)
+	}
+}
+
+// Interactive "skip" path: disk is left as-is and the manifest is flipped to
+// Managed=false with the disk hash, converging future upgrades to silent skip.
+func TestRunUpgrade_InteractiveSkip_WritesUnmanaged(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agents := filepath.Join(dir, "AGENTS.md")
+	local := []byte("# local edit\n")
+	if err := os.WriteFile(agents, local, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := runUpgradeIO(dir, false, strings.NewReader("s\n"), &out, &errOut); err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+
+	got, err := os.ReadFile(agents)
+	if err != nil {
+		t.Fatalf("read AGENTS.md: %v", err)
+	}
+	if string(got) != string(local) {
+		t.Errorf("AGENTS.md = %q, want local content preserved", got)
+	}
+
+	m, err := scaffold.ReadManifest(filepath.Join(dir, ".ralph", "manifest.toml"))
+	if err != nil {
+		t.Fatalf("ReadManifest: %v", err)
+	}
+	entry := m.Files["AGENTS.md"]
+	if entry.Managed {
+		t.Errorf("AGENTS.md.Managed = true after skip, want false (unmanaged)")
+	}
+	if entry.Hash != scaffold.HashBytes(local) {
+		t.Errorf("AGENTS.md hash = %q, want disk hash %q", entry.Hash, scaffold.HashBytes(local))
+	}
+}
+
+// Interactive "diff" path: the prompt renders a unified diff, then continues
+// to ask until the user picks overwrite or skip. Verifies both the diff
+// contents and the re-prompt behavior.
+func TestRunUpgrade_InteractiveDiff_ShowsUnifiedDiff(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agents := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# my agents\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	// d → re-prompt → s (keep local).
+	if err := runUpgradeIO(dir, false, strings.NewReader("d\ns\n"), &out, &errOut); err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+
+	combined := out.String()
+	for _, want := range []string{
+		"--- local",
+		"+++ template (1.0.0-test)",
+		"-# my agents",
+		"+# AGENTS",
+	} {
+		if !strings.Contains(combined, want) {
+			t.Errorf("diff output missing %q; got:\n%s", want, combined)
+		}
+	}
+}
+
+// Invalid prompt input (blank line, unknown token) must re-prompt without
+// terminating. Repeated `d` entries must re-render the diff cleanly instead
+// of collapsing into a broken loop.
+func TestRunUpgrade_InteractiveDiff_ReprompltsOnInvalid(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agents := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# drift\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	// garbage → d → d → s
+	input := strings.NewReader("xyz\nd\nd\ns\n")
+	if err := runUpgradeIO(dir, false, input, &out, &errOut); err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+
+	got := out.String()
+	// Prompt line should appear at least four times (initial, after garbage,
+	// after first diff, after second diff).
+	if strings.Count(got, "[o]verwrite / [s]kip / [d]iff") < 4 {
+		t.Errorf("expected prompt to re-render on invalid and diff inputs; got:\n%s", got)
+	}
+}
+
+// Convergence: after a skip, running upgrade again must not re-prompt — the
+// file is now user-owned.
+func TestRunUpgrade_NextRunAfterSkip_IsSilent(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agents := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# local edit\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := runUpgradeIO(dir, false, strings.NewReader("s\n"), &out, &errOut); err != nil {
+		t.Fatalf("first upgrade: %v", err)
+	}
+
+	out.Reset()
+	errOut.Reset()
+
+	// Empty stdin: if the second run re-prompts, the EOF branch would flip
+	// "(non-interactive input detected, skipping)" into errOut and we'd see
+	// a warning. No prompt means no such output.
+	if err := runUpgradeIO(dir, false, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("second upgrade: %v", err)
+	}
+
+	if strings.Contains(out.String(), "modified locally") {
+		t.Errorf("second upgrade re-prompted for skipped file; got:\n%s", out.String())
+	}
+	if strings.Contains(errOut.String(), "non-interactive input detected") {
+		t.Errorf("second upgrade hit the non-interactive skip branch — it should silent-skip unmanaged entries; got:\n%s", errOut.String())
+	}
+}
+
+// If the local file vanishes between diff computation and the prompt render,
+// showDiff must fall back to a hash summary and let the user continue
+// choosing rather than abort the whole upgrade.
+func TestRunUpgrade_DiskReadFailure_FallsBackToHash(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "1.0.0-test"
+
+	dir := t.TempDir()
+	cfg := initConfig{ProjectName: "test", Packs: nil}
+	if err := executeInit(dir, cfg, false); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	agents := filepath.Join(dir, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# will be removed mid-run\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// removingReader simulates the file being deleted after diff computation
+	// but before the user's `d` input reaches the prompt handler.
+	reader := &removingReader{
+		script: []string{"d\n", "s\n"},
+		onFirst: func() {
+			_ = os.Remove(agents)
+		},
+	}
+
+	var out, errOut bytes.Buffer
+	if err := runUpgradeIO(dir, false, reader, &out, &errOut); err != nil {
+		t.Fatalf("upgrade: %v", err)
+	}
+
+	if !strings.Contains(errOut.String(), "could not read") {
+		t.Errorf("expected disk-read fallback warning; errOut:\n%s", errOut.String())
+	}
+	if !strings.Contains(out.String(), "template hash:") {
+		t.Errorf("expected hash fallback summary; out:\n%s", out.String())
+	}
+}
+
+// removingReader yields one scripted input line per Read call and fires the
+// onFirst hook before the first line, letting tests inject mid-prompt
+// filesystem changes.
+type removingReader struct {
+	script  []string
+	onFirst func()
+	called  bool
+	buf     []byte
+}
+
+func (r *removingReader) Read(p []byte) (int, error) {
+	if !r.called && r.onFirst != nil {
+		r.onFirst()
+	}
+	r.called = true
+	if len(r.buf) == 0 {
+		if len(r.script) == 0 {
+			return 0, io.EOF
+		}
+		r.buf = []byte(r.script[0])
+		r.script = r.script[1:]
+	}
+	n := copy(p, r.buf)
+	r.buf = r.buf[n:]
+	return n, nil
 }
 
 func TestRunDoctor_Passes(t *testing.T) {
