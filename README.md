@@ -1,6 +1,38 @@
+<div align="center">
+
 # ralph
 
-`ralph` is a CLI for harness engineering with **Claude Code first** and **cross-vendor portability second**. It scaffolds, upgrades, and runs opinionated agent harnesses — small always-on maps, on-demand skills, deterministic hooks, evidence-backed reviews, and optional autonomous parallel execution (Ralph Loop).
+**Claude Code–first CLI for harness engineering.**
+
+Scaffold, upgrade, and run opinionated agent harnesses — small always-on maps, on-demand skills, deterministic hooks, evidence-backed reviews, and optional autonomous parallel execution (Ralph Loop).
+
+[![verify](https://github.com/yoshpy-dev/ralph/actions/workflows/verify.yml/badge.svg)](https://github.com/yoshpy-dev/ralph/actions/workflows/verify.yml)
+[![latest release](https://img.shields.io/github/v/release/yoshpy-dev/ralph?sort=semver)](https://github.com/yoshpy-dev/ralph/releases/latest)
+[![Go version](https://img.shields.io/github/go-mod/go-version/yoshpy-dev/ralph)](go.mod)
+[![license](https://img.shields.io/github/license/yoshpy-dev/ralph)](LICENSE)
+[![Homebrew](https://img.shields.io/badge/homebrew-yoshpy--dev%2Ftap%2Fralph-orange)](#install)
+[![downloads](https://img.shields.io/github/downloads/yoshpy-dev/ralph/total)](https://github.com/yoshpy-dev/ralph/releases)
+
+[Why ralph?](#why-ralph) &middot; [Install](#install) &middot; [Quick start](#quick-start) &middot; [Features](#features) &middot; [Commands](#commands) &middot; [Operating loop](#operating-loop) &middot; [Ralph Loop](#ralph-loop-autonomous-parallel-execution) &middot; [Language packs](#language-packs) &middot; [Portability](#portability)
+
+</div>
+
+## Why ralph?
+
+Claude Code gives you a powerful agent, but the default setup is a blank slate. Repo-level harness conventions — rules, skills, hooks, subagents, verification scripts — have to be invented, maintained, and upgraded by hand, and they drift fast across projects.
+
+`ralph` ships those conventions as a distributable, upgradable scaffold.
+
+| | Bare Claude Code | `ralph init` |
+|---|:---:|:---:|
+| Always-on map (`AGENTS.md` / `CLAUDE.md`) | — | ✓ |
+| On-demand skills (plan, work, verify, loop, ...) | manual | 10+ bundled |
+| Deterministic hooks (mojibake guard, commit-msg, bash guard, ...) | manual | pre-wired |
+| Evidence-backed pipeline (self-review → verify → test → sync-docs) | ad hoc | canonical order, enforced |
+| Autonomous parallel execution | — | Ralph Loop (multi-worktree) |
+| Language packs (TS, Python, Rust, Go, Dart) | — | opt-in |
+| Drift management between projects | manual copy | `ralph upgrade` |
+| Cross-agent portability | — | portable `AGENTS.md` + scripts |
 
 ## Install
 
@@ -51,6 +83,15 @@ Before claiming a task is done:
 ./scripts/run-verify.sh
 ```
 
+## Features
+
+| | |
+|:---|:---|
+| **Maps, not manuals**<br/>Short `AGENTS.md` / `CLAUDE.md`; push detail into rules and skills, promote repeats into hooks. | **Canonical pipeline**<br/>`self-review → verify → test → sync-docs → codex-review → pr` enforced in standard flow and Ralph Loop. |
+| **Deterministic hooks**<br/>Mojibake guard, commit-msg secret scan, Bash guardrails, verification reminders — pre-wired in `settings.json`. | **Ralph Loop**<br/>Multi-worktree autonomous parallel slices, integration branch, unified PR — orchestrated by `ralph run`. |
+| **Language packs**<br/>TypeScript, Python, Rust, Go, Dart starters (opt-in) with per-language `verify.sh` and path-scoped rules. | **Drift-proof upgrades**<br/>Hash-based `ralph upgrade` with per-file conflict resolution — keeps N projects aligned as the scaffold evolves. |
+| **Evidence over prose**<br/>Every review, verify, test, and codex pass produces a dated artifact in `docs/reports/`. | **Cross-agent portable**<br/>`AGENTS.md` + `scripts/` + `packs/` stay neutral; `.claude/` is the Claude-native layer you can stack others beside. |
+
 ## Commands
 
 | Command | Purpose |
@@ -68,6 +109,11 @@ Before claiming a task is done:
 Run `ralph help <command>` for flags.
 
 ## What `ralph init` scaffolds
+
+The philosophy: **a map, not a manual**. Keep `AGENTS.md` small, push detail into rules and skills, promote repeated mistakes into hooks, scripts, tests, or CI.
+
+<details>
+<summary>Scaffold tree</summary>
 
 ```text
 .
@@ -92,9 +138,24 @@ Run `ralph help <command>` for flags.
 └── .github/workflows/        # CI
 ```
 
-The philosophy: **a map, not a manual**. Keep `AGENTS.md` small, push detail into rules and skills, promote repeated mistakes into hooks, scripts, tests, or CI.
+</details>
 
 ## Operating loop
+
+```mermaid
+flowchart LR
+    A["/spec<br/>(optional)"] --> B["/plan"]
+    B --> C["/work"]
+    B --> D["/loop"]
+    C --> E["/self-review"]
+    D --> E
+    E --> F["/verify"]
+    F --> G["/test"]
+    G --> H["/sync-docs"]
+    H --> I["/codex-review<br/>(optional)"]
+    I --> J["/pr"]
+    J --> K["CI +<br/>human merge"]
+```
 
 `/spec` is the only manual trigger in the loop; all other steps are auto-invoked. `/release` is also manual-only but lives outside the loop (repo maintainer use).
 
@@ -180,6 +241,9 @@ See `docs/roadmap/harness-maturity-model.md`. Short version:
 
 ## Repository layout (this repo)
 
+<details>
+<summary>Source tree</summary>
+
 ```text
 .
 ├── cmd/
@@ -202,6 +266,8 @@ See `docs/roadmap/harness-maturity-model.md`. Short version:
 ├── .goreleaser.yml
 └── .github/workflows/
 ```
+
+</details>
 
 ## License
 
