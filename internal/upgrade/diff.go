@@ -81,6 +81,22 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 		diskPath := filepath.Join(targetDir, path)
 		diskHash, diskErr := scaffold.HashFile(diskPath)
 
+		// User-accepted local variant: a prior `ralph upgrade` run recorded
+		// Managed=false for this path (the user chose skip on a conflict).
+		// Respect that ownership and silent-skip regardless of disk/template
+		// drift until an explicit resync brings the file back under template
+		// management.
+		if inManifest && !mf.Managed {
+			diffs = append(diffs, FileDiff{
+				Path:     path,
+				Action:   ActionSkip,
+				OldHash:  mf.Hash,
+				DiskHash: diskHash,
+				NewHash:  newHash,
+			})
+			return nil
+		}
+
 		if !inManifest {
 			// New file not in manifest. If disk has something different,
 			// surface as a conflict so the user is asked rather than
@@ -151,15 +167,29 @@ func ComputeDiffsWithManifest(manifest *scaffold.Manifest, targetDir string, new
 			return nil
 		}
 
-		// Template hasn't changed → skip regardless of user edits.
-		// Carry NewHash so callers can rewrite the manifest with a real hash.
+		// Template hasn't changed. If disk matches the recorded hash, the file
+		// is untouched → skip. If disk drifted from the recorded hash, the
+		// user edited a managed file locally: surface it as a conflict so the
+		// user can choose overwrite / skip / diff. Skip resolution writes
+		// Managed=false, converging subsequent upgrades to silent skip.
 		if newHash == mf.Hash {
+			if diskHash == mf.Hash {
+				diffs = append(diffs, FileDiff{
+					Path:     path,
+					Action:   ActionSkip,
+					OldHash:  mf.Hash,
+					DiskHash: diskHash,
+					NewHash:  newHash,
+				})
+				return nil
+			}
 			diffs = append(diffs, FileDiff{
-				Path:     path,
-				Action:   ActionSkip,
-				OldHash:  mf.Hash,
-				DiskHash: diskHash,
-				NewHash:  newHash,
+				Path:       path,
+				Action:     ActionConflict,
+				OldHash:    mf.Hash,
+				DiskHash:   diskHash,
+				NewHash:    newHash,
+				NewContent: content,
 			})
 			return nil
 		}
