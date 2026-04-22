@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/ui"
+	"github.com/yoshpy-dev/ralph/internal/ui"
 )
 
 // ansiRegexp matches ANSI escape sequences.

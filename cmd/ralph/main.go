@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	ralph "github.com/yoshpy-dev/harness-engineering-scaffolding-template"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/cli"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/scaffold"
+	ralph "github.com/yoshpy-dev/ralph"
+	"github.com/yoshpy-dev/ralph/internal/cli"
+	"github.com/yoshpy-dev/ralph/internal/scaffold"
 )
 
 func main() {

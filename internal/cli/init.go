@@ -11,7 +11,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/scaffold"
+	"github.com/yoshpy-dev/ralph/internal/scaffold"
 )
 
 func newInitCmd() *cobra.Command {

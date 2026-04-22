@@ -70,7 +70,7 @@ func TestReadOrchestratorState(t *testing.T) {
 		if s.Ended != "2026-04-15T08:30:00Z" {
 			t.Errorf("ended = %q, want 2026-04-15T08:30:00Z", s.Ended)
 		}
-		if s.PRUrl != "https://github.com/yoshpy-dev/harness-engineering-scaffolding-template/pull/42" {
+		if s.PRUrl != "https://github.com/yoshpy-dev/ralph/pull/42" {
 			t.Errorf("pr_url = %q, unexpected", s.PRUrl)
 		}
 		if s.IntegrationBranch != "integration/ralph-tui" {

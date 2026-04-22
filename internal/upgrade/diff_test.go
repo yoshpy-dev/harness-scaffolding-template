@@ -6,7 +6,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/scaffold"
+	"github.com/yoshpy-dev/ralph/internal/scaffold"
 )
 
 func setupTestProject(t *testing.T) (string, string) {

@@ -28,7 +28,7 @@
   "acceptance_criteria_remaining": [],
   "session_id": "sess-abc-123",
   "pr_created": true,
-  "pr_url": "https://github.com/yoshpy-dev/harness-engineering-scaffolding-template/pull/7",
+  "pr_url": "https://github.com/yoshpy-dev/ralph/pull/7",
   "phase_transitions": [
     {
       "from": "preflight",
