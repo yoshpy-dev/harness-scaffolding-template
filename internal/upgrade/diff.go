@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"path/filepath"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/scaffold"
+	"github.com/yoshpy-dev/ralph/internal/scaffold"
 )
 
 // FileAction describes what should happen to a file during upgrade.

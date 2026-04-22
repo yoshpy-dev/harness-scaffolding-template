@@ -8,11 +8,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/action"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/state"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/ui"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/ui/panes"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/watcher"
+	"github.com/yoshpy-dev/ralph/internal/action"
+	"github.com/yoshpy-dev/ralph/internal/state"
+	"github.com/yoshpy-dev/ralph/internal/ui"
+	"github.com/yoshpy-dev/ralph/internal/ui/panes"
+	"github.com/yoshpy-dev/ralph/internal/watcher"
 )
 
 func newStatusCmd() *cobra.Command {

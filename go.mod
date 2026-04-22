@@ -1,4 +1,4 @@
-module github.com/yoshpy-dev/harness-engineering-scaffolding-template
+module github.com/yoshpy-dev/ralph
 
 go 1.25.8
 

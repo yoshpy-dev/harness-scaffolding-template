@@ -9,7 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/scaffold"
+	"github.com/yoshpy-dev/ralph/internal/scaffold"
 )
 
 // setupTestEmbedFS injects a minimal mock FS into scaffold.EmbeddedFS for testing.

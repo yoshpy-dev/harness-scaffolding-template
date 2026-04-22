@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/ui"
+	"github.com/yoshpy-dev/ralph/internal/ui"
 )
 
 func TestLogViewSetContent(t *testing.T) {

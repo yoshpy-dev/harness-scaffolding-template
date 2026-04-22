@@ -1,6 +1,6 @@
 # Existing harness engineering approaches: comparison and synthesis
 
-This document distills the main approach families that informed this scaffold.
+This document distills the main approach families that informed `ralph` and the harness it ships.
 
 ## Executive summary
 
@@ -13,7 +13,7 @@ The common pattern across strong implementations is:
 - treat human attention as scarce
 - increase harness complexity only when the model or task actually needs it
 
-This scaffold therefore chooses a **hybrid default**:
+`ralph` therefore chooses a **hybrid default**:
 - minimal always-on map
 - on-demand workflows via skills
 - deterministic runtime controls via hooks and scripts
@@ -23,12 +23,12 @@ This scaffold therefore chooses a **hybrid default**:
 
 ## Approach families
 
-| Approach family | Core move | Strengths | Weaknesses | Best fit | Borrowed into this scaffold |
+| Approach family | Core move | Strengths | Weaknesses | Best fit | Borrowed into ralph |
 | --- | --- | --- | --- | --- | --- |
 | Prompt + verification baseline | Break work into smaller sessions, separate planning from execution, and give the agent a way to verify its own work | Low ceremony, immediate improvement, easy to start | Easy to regress without file-backed process | Solo agent work, small repos, early adoption | plan-first loop, verify-first mindset |
 | Repo as system of record | Short map file plus structured docs, versioned plans, doc hygiene, explicit boundaries, observability | Excellent legibility, better resilience across long tasks, reduces hidden context | Requires documentation discipline | Long-running or multi-person agent work | `AGENTS.md` + `docs/` + first-class plans and reports |
 | Planner / generator / evaluator harness | Separate planning, implementation, and QA into distinct agents with explicit grading criteria and feedback loops | Higher quality on complex tasks, especially subjective or bug-prone ones | Slow, expensive, evaluator tuning is hard | Frontier tasks beyond reliable solo capability | optional subagents, report artifacts, evidence contracts |
-| Claude-native workflow layering | Use CLAUDE.md, rules, skills, subagents, hooks, and MCP for layered control | Native to Claude Code, flexible, strong progressive disclosure story | Easy to overbuild or create routing conflicts | Claude Code primary workflow | core control plane of this scaffold |
+| Claude-native workflow layering | Use CLAUDE.md, rules, skills, subagents, hooks, and MCP for layered control | Native to Claude Code, flexible, strong progressive disclosure story | Easy to overbuild or create routing conflicts | Claude Code primary workflow | core control plane of ralph |
 | Skill orchestration and description tuning | Treat SKILL.md as an orchestration layer, use support files and scripts, tune descriptions, audit routing quality | Great for reusable workflows, scales specialized behavior | Description conflicts and trigger drift can appear | Mature Claude Code setups with many workflows | workflow skills, support templates, harness audit skill |
 | Runtime-enforced harness plugin | Guardrails on the execution path, stage-gated workflow, evidence pack, hook-heavy safety model | Strong protection and repeatability | More moving parts, can become heavy for simple repos | Teams or repos with strong safety and review needs | minimal runtime hooks, explicit reports, staged loop |
 | Continuous loop / Ralph style | Keep the agent iterating continuously, often with a while loop and persistent task file | High autonomy, strong for greenfield exploration | Needs very careful tuning; can wander in brownfield work | greenfield, event-consistency-friendly tasks | `/loop` skill, `ralph-loop.sh` orchestrator, task-specific prompt templates, stuck detection, iteration limits |
@@ -102,7 +102,7 @@ This scaffold therefore chooses a **hybrid default**:
    - Safety rails: iteration limits, stuck detection, verification integration
    - File-system memory (progress.log) bridges fresh-context invocations
 
-## What this scaffold intentionally does not do by default
+## What ralph intentionally does not do by default
 
 - It does not start with agent teams turned on.
 - It does not force custom worktree hooks on every repo.

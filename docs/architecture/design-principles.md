@@ -1,4 +1,4 @@
-# Design principles for the scaffold
+# Design principles for ralph
 
 ## 1. Map, not manual
 
@@ -59,7 +59,7 @@ Escalate only when justified.
 
 ## 7. Preserve optionality
 
-The scaffold should support:
+The harness ralph emits should support:
 - multiple languages
 - multiple agents
 - multiple vendors

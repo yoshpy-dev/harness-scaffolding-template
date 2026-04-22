@@ -1,6 +1,6 @@
 package ui
 
-import "github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/state"
+import "github.com/yoshpy-dev/ralph/internal/state"
 
 // SliceSelectedMsg is sent when a slice is selected in the slice list.
 type SliceSelectedMsg struct {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/action"
-	"github.com/yoshpy-dev/harness-engineering-scaffolding-template/internal/config"
+	"github.com/yoshpy-dev/ralph/internal/action"
+	"github.com/yoshpy-dev/ralph/internal/config"
 )
 
 func newRunCmd() *cobra.Command {
