@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repository is a scaffold for harness engineering.
+This repository hosts `ralph`, a CLI for harness engineering. Run `ralph init` to scaffold a new project from this source.
 
 Treat this file as a **map**:
 - short
