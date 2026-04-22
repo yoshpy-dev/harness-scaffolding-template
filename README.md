@@ -1,296 +1,207 @@
-# harness-engineering-scaffolding-template
+# ralph
 
-A language-agnostic scaffold for practicing harness engineering with **Claude Code first** and **cross-vendor portability second**.
+`ralph` is a CLI for harness engineering with **Claude Code first** and **cross-vendor portability second**. It scaffolds, upgrades, and runs opinionated agent harnesses — small always-on maps, on-demand skills, deterministic hooks, evidence-backed reviews, and optional autonomous parallel execution (Ralph Loop).
 
-This repository is intentionally designed as a **map, not a manual**:
-- `AGENTS.md` is the vendor-neutral map for any coding agent.
-- `CLAUDE.md` imports `AGENTS.md` and adds Claude Code specific guidance.
-- `.claude/rules/` keeps conditional guidance out of the always-on context.
-- `.claude/skills/` provides on-demand workflows for plan, work, self-review, verify, and harness auditing.
-- `.claude/hooks/` adds deterministic runtime guardrails where instructions alone are not enough.
-- `packs/languages/` provides opt-in language specializations without hard-coding the core scaffold to one stack.
-
-## Why this scaffold exists
-
-Strong harnesses are not just prompts. They combine:
-1. **A small always-on map**
-2. **On-demand workflows**
-3. **Deterministic checks on the execution path**
-4. **Evidence-backed review and verification**
-5. **Optional escalation to subagents, worktrees, or agent teams when the task truly needs them**
-
-The default philosophy here is:
-
-- Start simple
-- Add complexity only when the model or task demands it
-- Keep plans, decisions, tech debt, and evidence in the repo
-- Promote recurring mistakes from prose into scripts, rules, tests, hooks, or CI
-
-## What is inside
-
-```text
-.
-├── AGENTS.md
-├── CLAUDE.md
-├── .claude/
-│   ├── settings.json
-│   ├── hooks/
-│   ├── skills/
-│   ├── agents/
-│   └── rules/
-├── cmd/
-│   ├── ralph/              # CLI entrypoint (cobra + go:embed)
-│   └── ralph-tui/          # Legacy TUI entrypoint
-├── internal/
-│   ├── cli/                # Subcommands (init, upgrade, run, doctor, etc.)
-│   ├── scaffold/           # Template embedding + manifest
-│   ├── upgrade/            # Diff engine + conflict resolution
-│   ├── config/             # ralph.toml parser
-│   ├── state/              # Pipeline state reader
-│   ├── watcher/            # File system watcher
-│   ├── ui/                 # Bubble Tea TUI components
-│   └── action/             # CLI action executor
-├── templates/              # go:embed source for ralph init
-│   ├── base/               # Base scaffold (.claude/, AGENTS.md, scripts/, etc.)
-│   └── packs/              # Language packs
-├── docs/
-│   ├── specs/
-│   ├── plans/
-│   ├── reports/
-│   ├── quality/
-│   ├── tech-debt/
-│   └── ...
-├── packs/
-│   └── languages/
-├── scripts/
-├── .goreleaser.yml
-└── .github/workflows/
-```
-
-## Quick start
-
-### Option A: Install the ralph CLI (recommended)
+## Install
 
 ```sh
 # Homebrew
 brew install yoshpy-dev/tap/ralph
 
-# Or one-liner
-curl -fsSL https://raw.githubusercontent.com/yoshpy-dev/harness-engineering-scaffolding-template/main/scripts/install.sh | sh
+# Or install script (verifies SHA256 against GitHub Releases)
+curl -fsSL https://raw.githubusercontent.com/yoshpy-dev/ralph/main/scripts/install.sh | sh
 ```
 
-Then scaffold a new project:
+Verify:
+
+```sh
+ralph version
+ralph doctor
+```
+
+## Quick start
 
 ```sh
 ralph init my-project
 cd my-project
-ralph doctor          # verify setup
+ralph doctor                  # environment check
 ```
 
-### Option B: Clone the template repo
+Create your first plan and run the loop inside Claude Code:
 
-1. Initialize the project (cleans template artifacts, bootstraps hooks and directories).
+```sh
+# Standard flow
+./scripts/new-feature-plan.sh login-form
 
-   ```sh
-   ./scripts/init-project.sh
-   ```
+# Ralph Loop (directory-based plan with parallel slices)
+./scripts/new-ralph-plan.sh login-form N/A 3
+```
 
-2. Edit these files first:
-   - `AGENTS.md`
-   - `CLAUDE.md`
-   - `.claude/rules/*.md`
-   - `packs/languages/*/verify.sh` or `scripts/verify.local.sh`
+In Claude Code, follow the loop:
 
-### Then, in both cases:
+```
+/spec (optional) → /plan → /work (or /loop)
+→ /self-review → /verify → /test → /sync-docs
+→ /codex-review (optional) → /pr
+```
 
-1. Create your first plan.
+Before claiming a task is done:
 
-   ```sh
-   # Standard flow
-   ./scripts/new-feature-plan.sh login-form
+```sh
+./scripts/run-verify.sh
+```
 
-   # Ralph Loop (directory-based plan with parallel slices)
-   ./scripts/new-ralph-plan.sh login-form N/A 3
-   ```
+## Commands
 
-2. In Claude Code, follow the loop:
-   - `/spec` (optional) → `/plan` → `/work` (or `/loop`) → `/self-review` → `/verify` → `/test` → `/sync-docs` → `/codex-review` (optional) → `/pr`
+| Command | Purpose |
+|---------|---------|
+| `ralph init [name]` | Scaffold a new project (interactive: language packs, Ralph Loop, TUI). |
+| `ralph upgrade` | Pull template updates with per-file conflict resolution. |
+| `ralph run` | Execute a Ralph Loop pipeline (orchestrator + per-slice pipelines). |
+| `ralph status` | Launch TUI (Lazygit-style 4-pane) or fall back to table/JSON output. |
+| `ralph retry <slice>` | Retry a failed or stuck slice. |
+| `ralph abort [--slice <name>]` | Abort a single slice or all slices. |
+| `ralph pack add <lang>` | Install a language pack. |
+| `ralph doctor` | Check Claude Code CLI, hooks, manifest drift, language packs. |
+| `ralph version` | Show semver + commit + build date. |
 
-3. Before claiming a task is done, run:
+Run `ralph help <command>` for flags.
 
-   ```sh
-   ./scripts/run-verify.sh
-   ```
+## What `ralph init` scaffolds
+
+```text
+.
+├── AGENTS.md                 # vendor-neutral map for any coding agent
+├── CLAUDE.md                 # Claude Code specific guidance (imports AGENTS.md)
+├── .claude/
+│   ├── settings.json         # hooks, permissions, env
+│   ├── hooks/                # deterministic runtime guardrails
+│   ├── skills/               # on-demand workflows (plan, work, verify, ...)
+│   ├── agents/               # specialized subagents
+│   └── rules/                # conditional, path-scoped guidance
+├── docs/
+│   ├── specs/                # refined specifications from /spec
+│   ├── plans/active/         # plans in flight
+│   ├── plans/archive/        # completed plans
+│   ├── reports/              # self-review, verify, test artifacts
+│   ├── quality/              # definition of done, quality gates
+│   └── tech-debt/            # tracked debt
+├── packs/languages/          # opt-in language specializations
+├── scripts/                  # run-verify.sh, new-feature-plan.sh, etc.
+├── ralph.toml                # CLI config
+└── .github/workflows/        # CI
+```
+
+The philosophy: **a map, not a manual**. Keep `AGENTS.md` small, push detail into rules and skills, promote repeated mistakes into hooks, scripts, tests, or CI.
 
 ## Operating loop
 
-This scaffold assumes the following default loop. `/spec` is the only manual trigger in the loop; all other steps are auto-invoked. (`/release` is also manual-only but lives outside the loop — repo-specific, not distributed via template.)
+`/spec` is the only manual trigger in the loop; all other steps are auto-invoked. `/release` is also manual-only but lives outside the loop (repo maintainer use).
 
-1. **Spec** (manual, optional — `/spec`)
-   - Use when the request is too vague for `/plan`
-   - Expands sparse inputs through iterative brainstorming (壁打ち), explores the codebase, researches best practices, and clarifies residual requirements interactively
-   - Produces a spec file in `docs/specs/` and optionally creates a GitHub issue
-   - Can hand off directly to `/plan` after completion
+1. **Spec** (manual, optional — `/spec`) — refine vague requests through brainstorming, codebase exploration, and interactive clarification. Produces `docs/specs/<date>-<slug>.md` and optionally a GitHub issue.
+2. **Plan** (auto — `/plan`) — file-backed plan in `docs/plans/active/` with acceptance criteria, verify plan, test plan, risks. Selects flow: `/work` or `/loop`.
+3. **Work** (auto — `/work`) **or Loop** (auto — `/loop`) — `/work` creates a branch and implements interactively; `/loop` runs autonomous parallel slices.
+4. **Self-review** (auto — `/self-review`) — diff quality artifact.
+5. **Verify** (auto — `/verify`) — spec compliance + static analysis.
+6. **Test** (auto — `/test`) — behavioral tests must pass before PR.
+7. **Sync docs** (auto — `/sync-docs`) — alignment across AGENTS.md / CLAUDE.md / rules / README.
+8. **Codex review** (auto, optional — `/codex-review`) — cross-model second opinion via Codex CLI; silently skipped if unavailable.
+9. **PR** (auto — `/pr`) — structured PR, plan archival, hand-off.
+10. **CI + human merge**.
 
-2. **Plan** (auto — `/plan`)
-   - Create or refresh a file-backed plan in `docs/plans/active/`
-   - Define acceptance criteria, contracts, risks, and verification
-   - Optionally link a GitHub issue for context pre-fill
-   - Select execution flow: standard (`/work`) or Ralph Loop (`/loop`)
-
-3. **Work** (auto — `/work`) or **Loop** (auto — `/loop`)
-   - `/work`: creates a branch (`git checkout -b`) and implements interactively in Claude Code
-   - `/loop`: creates a Git Worktree and sets up autonomous iteration via `claude -p`
-
-4. **Self-review** (auto — `/self-review`)
-   - Produce a written review artifact (diff quality only)
-   - Prefer read-only reviewer agents for audit tasks
-
-5. **Verify** (auto — `/verify`)
-   - Check spec compliance against acceptance criteria
-   - Run static analysis and documentation drift checks
-   - Record results in `docs/reports/`
-
-6. **Test** (auto — `/test`)
-   - Run behavioral tests (unit, integration, regression)
-   - Tests must pass before PR creation
-
-7. **Sync docs** (auto — `/sync-docs`)
-   - Sync plans, docs, and instruction files after behavior changes
-   - Check for documentation drift across AGENTS.md, CLAUDE.md, rules, and README
-
-8. **Codex review** (auto, optional — `/codex-review`)
-   - Cross-model second opinion on the diff using Codex CLI
-   - Silently skipped if Codex is unavailable
-   - Findings are advisory — user decides whether to act
-
-9. **PR** (auto — `/pr`)
-   - Create a pull request with structured summary
-   - Archive finished plans from `active/` to `archive/`
-   - Include walkthrough for large diffs
-
-10. **CI + Human merge**
-    - `verify.yml` runs `run-verify.sh` on the PR
-    - Human reviews and merges
-
-## Hook configuration
-
-`.claude/settings.json` ships with all hooks pre-configured:
-
-- Session start context
-- Prompt-level reminders
-- Bash guardrails
-- Edit/write verification reminders
-- Tool failure feedback
-- Compaction checkpoints
-- Session end summary
-
-Customize by editing `.claude/settings.json` directly. Use `.claude/settings.local.json` for personal overrides (gitignored).
-
-## Language packs
-
-The core scaffold stays stack-agnostic. Language-specific depth lives in `packs/languages/`.
-
-Included starter packs:
-- `typescript/`
-- `python/`
-- `rust/`
-- `golang/`
-- `dart/` (Flutter support included)
-- `_template/` for new packs
-
-Add a new pack with:
-
-```sh
-./scripts/new-language-pack.sh go
-```
-
-Then wire it into:
-- `packs/languages/<name>/verify.sh`
-- `.claude/rules/<name>.md`
-- project build/test/tooling
+See `.claude/rules/post-implementation-pipeline.md` for the canonical pipeline order.
 
 ## Ralph Loop (autonomous parallel execution)
 
-For large tasks that can be split into independent slices, the Ralph Loop runs parallel pipelines across multiple Git worktrees. Each slice gets its own `claude -p` pipeline that handles the full lifecycle autonomously (implement → self-review → verify → test → sync-docs → codex-review). Completed slices are sequentially merged into an integration branch, and a unified PR is created.
+For large tasks that can be split into independent slices, Ralph Loop runs parallel pipelines across multiple Git worktrees. Each slice handles its own lifecycle autonomously (implement → self-review → verify → test → sync-docs → codex-review). Completed slices are sequentially merged into an integration branch, and a unified PR is created.
 
 ```sh
-# Create a directory-based plan with slices
 ./scripts/new-ralph-plan.sh my-feature N/A 3
-
-# Run the orchestrator
 ./scripts/ralph run --plan docs/plans/active/2026-01-01-my-feature/ --unified-pr
-
-# Check progress (launches TUI when available, table output otherwise)
-./scripts/ralph status
-
-# Table output only (skip TUI)
-./scripts/ralph status --no-tui
-
-# JSON output
-./scripts/ralph status --json
-
-# Retry a failed/stuck slice
+./scripts/ralph status                  # launches TUI if available
+./scripts/ralph status --no-tui         # table output
+./scripts/ralph status --json           # JSON output
 ./scripts/ralph retry <slice-name>
-
-# Abort a single slice
 ./scripts/ralph abort --slice <slice-name>
-
-# Abort all slices
-./scripts/ralph abort
-
-# Build the TUI binary (requires Go 1.22+)
-./scripts/build-tui.sh
+./scripts/ralph abort                   # abort all
+./scripts/build-tui.sh                  # requires Go 1.22+
 ```
 
 Or use the `/loop` skill inside Claude Code for interactive setup.
 
-When a TUI binary (`bin/ralph-tui`) is available and the terminal is a TTY, `ralph status` launches a Lazygit-style 4-pane interface for real-time slice monitoring, log tailing, and interactive retry/abort. If the binary is missing or outdated, it falls back to the existing table output.
-
-Safety rails include iteration limits, stuck detection (3 consecutive no-change iterations), Inner/Outer Loop architecture with repair attempt caps, slice timeout detection, signal handlers for clean shutdown, and hook parity checks. All pipeline settings (model, effort, permission mode, iteration caps, timeouts) are configurable via environment variables through `scripts/ralph-config.sh`.
+Safety rails: iteration limits, stuck detection (3 consecutive no-change iterations), Inner/Outer Loop architecture with repair caps, slice timeout detection, signal handlers, hook parity checks. Configure via env vars in `scripts/ralph-config.sh`.
 
 See `docs/recipes/ralph-loop.md` for the full guide.
 
-## Portability model
+## Hooks
 
-This scaffold deliberately separates:
-- **Portable instruction map**: `AGENTS.md`
-- **Claude-native control plane**: `CLAUDE.md`, `.claude/rules/`, `.claude/skills/`, `.claude/hooks/`, `.claude/agents/`
-- **Language packs**: `packs/languages/`
-- **Deterministic scripts and CI**: `scripts/`, `.github/workflows/`
+`.claude/settings.json` ships with hooks pre-configured: session start context, prompt-level reminders, Bash guardrails, edit/write verification reminders, tool failure feedback, compaction checkpoints, session end summary. Customize `.claude/settings.json` directly; use `.claude/settings.local.json` for personal overrides (gitignored).
 
-That gives you a base you can keep if you later add Codex, Gemini CLI, or another coding agent.
+## Language packs
 
-## Recommended adoption order
+Core scaffold stays stack-agnostic. Language-specific depth lives in `packs/languages/`. Starter packs included: `typescript/`, `python/`, `rust/`, `golang/`, `dart/` (Flutter), plus a `_template/` for new packs.
 
-See `docs/roadmap/harness-maturity-model.md`, but the short version is:
+Add a pack:
+
+```sh
+ralph pack add go
+# or
+./scripts/new-language-pack.sh go
+```
+
+Wire it into `packs/languages/<name>/verify.sh`, `.claude/rules/<name>.md`, and project build/test tooling.
+
+## Portability
+
+`ralph` is Claude-native, but the scaffold separates portable vs. Claude-specific surfaces so you can keep the base when adding Codex, Gemini CLI, or another agent:
+
+- **Portable**: `AGENTS.md`, `scripts/`, `.github/workflows/`, `packs/languages/`
+- **Claude-native**: `CLAUDE.md`, `.claude/rules/`, `.claude/skills/`, `.claude/hooks/`, `.claude/agents/`
+
+## Adoption order
+
+See `docs/roadmap/harness-maturity-model.md`. Short version:
 
 1. Map + verify
 2. Plan/work/self-review/verify skills
 3. Deterministic hooks
 4. Path-scoped rules and subagents
 5. Worktrees and agent teams for genuinely parallel tasks
-6. Evaluator loops and richer observability only when the task complexity earns the cost
+6. Evaluator loops and richer observability when complexity earns the cost
 
-## Important defaults
+## Defaults
 
-- Keep `AGENTS.md` short
-- Keep `CLAUDE.md` shorter
-- Move topic-specific guidance to `.claude/rules/`
-- Move workflow-specific guidance to `.claude/skills/`
-- Prefer evidence over confidence
+- Keep `AGENTS.md` short, `CLAUDE.md` shorter
+- Topic-specific guidance → `.claude/rules/`
+- Workflow-specific guidance → `.claude/skills/`
+- Evidence over confidence
 - Do not rely on prose for hard guarantees
-- Treat human attention as the scarcest resource in the system
+- Treat human attention as the scarcest resource
 
-## Useful files to inspect first
+## Repository layout (this repo)
 
-- `docs/research/approach-comparison.md`
-- `docs/architecture/design-principles.md`
-- `.claude/skills/plan/SKILL.md`
-- `.claude/skills/verify/SKILL.md`
-- `.claude/hooks/pre_bash_guard.sh`
-- `scripts/run-verify.sh`
-- `docs/roadmap/harness-maturity-model.md`
+```text
+.
+├── cmd/
+│   ├── ralph/                # CLI entrypoint (cobra + go:embed)
+│   └── ralph-tui/            # Legacy TUI entrypoint
+├── internal/
+│   ├── cli/                  # Subcommands
+│   ├── scaffold/             # Template embedding + manifest
+│   ├── upgrade/              # Diff engine + conflict resolution
+│   ├── config/               # ralph.toml parser
+│   ├── state/                # Pipeline state reader
+│   ├── watcher/              # fsnotify + polling fallback
+│   ├── ui/                   # Bubble Tea TUI
+│   └── action/               # CLI action executor
+├── templates/                # go:embed source (distributed by `ralph init`)
+│   ├── base/
+│   └── packs/
+├── packs/languages/
+├── scripts/
+├── .goreleaser.yml
+└── .github/workflows/
+```
 
 ## License
 
