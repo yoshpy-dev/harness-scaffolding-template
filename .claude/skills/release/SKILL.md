@@ -43,7 +43,7 @@ Stop and report which check failed if any of these are false:
    - Watch it: `gh run watch <id> --exit-status`. If the workflow fails, surface the logs (`gh run view <id> --log-failed`) and stop. The tag remains on origin; the user must decide whether to delete it (`git push --delete origin vX.Y.Z` + `git tag -d vX.Y.Z`) or re-run the workflow.
 7. **Verify the GitHub Release.** `gh release view vX.Y.Z` — confirm all four archives exist (`darwin_amd64`, `darwin_arm64`, `linux_amd64`, `linux_arm64`) plus `checksums.txt`.
 8. **Verify the Homebrew tap update.** Fetch the tap Formula and confirm the version bumped:
-   - `gh api repos/yoshpy-dev/homebrew-tap/contents/Formula/ralph.rb --jq '.content' | base64 -d | grep -E 'version|url'`
+   - `gh api repos/yoshpy-dev/homebrew-tap/contents/ralph.rb --jq '.content' | base64 -d | grep -E 'version|url'`
    - The `version` line must match the new `vX.Y.Z` (without the leading `v`).
    - If the Formula does not yet reflect the new version, wait ~30s and retry once; goreleaser pushes to the tap as the final step.
 9. **Report completion.** Show the user:
