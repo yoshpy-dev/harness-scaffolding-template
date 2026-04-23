@@ -42,7 +42,7 @@ Provide a cross-model second opinion on the current diff before PR creation.
    Triage each Codex finding using implementation context. This step runs inline (main context) because triage value depends on knowing *why* the code was written that way.
 
    **Load triage context:**
-   - Read the active plan from `docs/plans/active/`
+   - Read the active plan using the path recorded in `active-plan.json` from Step 0 — do not rescan `docs/plans/active/`. If `active-plan.json` is absent (fallback mode), use the path resolved in Step 0's fallback.
    - Read the self-review report from `docs/reports/` (if available)
    - Read the verify report from `docs/reports/` (if available)
    - Consider implementation decisions made during the current session
@@ -118,7 +118,7 @@ Provide a cross-model second opinion on the current diff before PR creation.
    Note "Codex: 全指摘トリアージ済み（要対応なし）— トリアージレポート: docs/reports/codex-triage-<slug>.md" and proceed to /pr.
 
 7. **Proceed**:
-   - If the user chooses a re-run path AND `active-plan.json` exists: increment `cycle-count.json` (`cycle += 1`), then guide them back to `/self-review`.
+   - If the user chooses a re-run path (including the cap-reached "上限を一時的に引き上げて再実行" option) AND `active-plan.json` exists: increment `cycle-count.json` (`cycle += 1`), then guide them back to `/self-review`. The "raise the cap" option also requires the user to export a new `RALPH_STANDARD_MAX_PIPELINE_CYCLES` before re-running; simply incrementing without raising the cap would trip the same cap immediately.
    - If the user chooses `/pr`: invoke /pr (which is responsible for deleting `active-plan.json` and `cycle-count.json` on success).
    - If the user chooses 中止: stop without invoking /pr; leave state files in place so the next `/work` can resume.
 
