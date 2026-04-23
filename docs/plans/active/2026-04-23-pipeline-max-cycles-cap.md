@@ -162,7 +162,7 @@
 - [x] Slice 3: skill docs (work/codex-review/pr) (commit 7568755)
 - [x] Slice 4: rules + docs sync (commit 7b2e2e2)
 - [x] Final verification (tests 27/27, check-sync PASS, run-verify PASS)
-- [ ] Review artifact created
-- [ ] Verification artifact created
-- [ ] Test artifact created
+- [x] Review artifact created (`docs/reports/self-review-2026-04-23-pipeline-max-cycles-cap.md`)
+- [x] Verification artifact created (`docs/reports/verify-2026-04-23-pipeline-max-cycles-cap.md`, verdict: PASS)
+- [x] Test artifact created (`docs/reports/test-2026-04-23-pipeline-max-cycles-cap.md`, verdict: PASS — 27/27 + 40/40)
 - [ ] PR created

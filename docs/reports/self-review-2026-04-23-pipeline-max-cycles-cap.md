@@ -1,0 +1,58 @@
+# Self-review report: pipeline-max-cycles-cap
+
+- Date: 2026-04-23
+- Plan: `docs/plans/active/2026-04-23-pipeline-max-cycles-cap.md`
+- Reviewer: reviewer subagent (self-review, diff quality only)
+- Scope: 5 commits on `feat/pipeline-max-cycles-cap` (`5a42478`, `009428f`, `7568755`, `7b2e2e2`, `878f5d2`); `git diff main...HEAD` = 18 files, +319/-41. No spec-compliance or test-coverage evaluation — those belong to `/verify` and `/test`.
+
+## Evidence reviewed
+
+- `git diff main...HEAD --stat`: 18 files touched. Groupings:
+  - Config / scripts: `scripts/ralph-config.sh`, `scripts/ralph-pipeline.sh` (+ mirrored `templates/base/`).
+  - Skills: `.claude/skills/work/SKILL.md`, `.claude/skills/codex-review/SKILL.md`, `.claude/skills/pr/SKILL.md` (+ mirrored `templates/base/`).
+  - Rules / docs: `.claude/rules/post-implementation-pipeline.md`, `docs/quality/definition-of-done.md`, `docs/recipes/ralph-loop.md` (+ mirrored `templates/base/`).
+  - Plan: `docs/plans/active/2026-04-23-pipeline-max-cycles-cap.md` (new file, 168 lines).
+  - Tests: `tests/test-ralph-config.sh`.
+- Template parity: ran `cmp` on all 8 mirrored pairs — every pair is byte-identical.
+- `scripts/check-sync.sh`: PASS (`ROOT_ONLY: 0`, `TEMPLATE_ONLY: 9`, `KNOWN_DIFF: 3`).
+- `bash tests/test-ralph-config.sh`: 27/27 pass, including the 3 new assertions for `RALPH_STANDARD_MAX_PIPELINE_CYCLES`.
+- Added-line scans: no `console.log`/`TODO`/`FIXME`/`debug` leftovers; no hardcoded secrets, tokens, API keys, or passwords.
+- `scripts/archive-plan.sh` accepts absolute paths (`[ -f "$arg" ] || [ -d "$arg" ]` branch at lines 23-24), so the change in `/pr` Step 5 from `<slug>` to `<absolute-plan-path>` is compatible.
+- `grep` confirmed `_finalize "max_outer_cycles"` is the actual call site at `scripts/ralph-pipeline.sh:971`, so the rules-file reference is accurate.
+
+## Findings
+
+| Severity | Area | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- | --- |
+| MEDIUM | unnecessary-change / readability | `/codex-review` Step 3 "Load triage context" still instructs "Read the active plan from `docs/plans/active/`", which directly contradicts the newly added Step 0 "Hard prohibition: Do NOT rediscover the plan by rescanning `docs/plans/active/` once `active-plan.json` exists." A future agent reading Step 3 literally could justify rescanning the directory — defeating the very guarantee the Codex-adversarial-finding-#2 change was introduced to provide. | `/Users/hiroki.yoshioka/MyDev/github.com/yoshpy-dev/ralph/.claude/skills/codex-review/SKILL.md:28` (prohibition) vs `:45` (unchanged rescan instruction). Mirrored in `templates/base/.claude/skills/codex-review/SKILL.md`. | Update Step 3 bullet to: "Read the active plan using the path recorded in `active-plan.json` (Step 0) — do not rescan `docs/plans/active/`." Apply the same edit to the templated copy. |
+| LOW | maintainability | `/codex-review` Step 7 says "If the user chooses a re-run path AND `active-plan.json` exists: increment `cycle-count.json` (`cycle += 1`)." The prompt does not specify whether "re-run path" includes the cap-reached Option 1 ("上限を一時的に引き上げて再実行"). Because Option 1 instructs the user to export a higher cap and re-run, the counter presumably should still increment on that path — but the skill text doesn't say so, and an agent could treat "raise the cap" as a pre-re-run action that skips the increment. | `.claude/skills/codex-review/SKILL.md:105` (Option 1 of cap-reached flow) and `:120-123` (Step 7's "re-run path" wording). | Clarify Step 7 with explicit enumeration: "A 're-run path' is any option that returns to `/self-review`: Case A Option 1, Case B Option 1 (both not-cap-reached), and the cap-reached Case A Option 1." |
+| LOW | maintainability | `/work` SKILL.md numbers the new sub-step `0.5.` but does not renumber subsequent steps; Step 0 is (correctly) left as-is, but the visual ordering `0 → 0.5 → 1 → ...` is unconventional and slightly harder to reference than using e.g. `0a`/`0b` or promoting to a full numeric step. Markdown still renders it, and run-time behavior is unaffected. | `/Users/hiroki.yoshioka/MyDev/github.com/yoshpy-dev/ralph/.claude/skills/work/SKILL.md:15` (the `0.5.` line). | Optional: rename to `0a.` for consistency with existing `3a.` sub-step convention in the same file (line 27). Non-blocking. |
+| LOW | readability | Plan's Implementation Outline ("Step 10 (new)") described `/pr` cleanup as a new `/work` step, but the implementation folded cleanup into `/pr` Step 6 directly. `/work` SKILL.md step 9f mentions the cleanup only in prose, not as a dedicated step. This is a minor spec-vs-code deviation that `/verify` will flag as a drift concern but is otherwise harmless — the behavior is correctly owned by `/pr` SKILL.md. | `/Users/hiroki.yoshioka/MyDev/github.com/yoshpy-dev/ralph/docs/plans/active/2026-04-23-pipeline-max-cycles-cap.md:95` vs `/Users/hiroki.yoshioka/MyDev/github.com/yoshpy-dev/ralph/.claude/skills/pr/SKILL.md:33-35`. | Non-blocking. Consider adding a one-line deviation note to the plan so `/verify` has a paper trail. |
+| LOW | maintainability | The deferred "script the counter" decision (Codex advisory #1) is tracked in the plan's Open Questions but not in `docs/tech-debt/`. If this diff merges as-is, the JSON manipulation remains entirely in prompt-text form with no deterministic helper. Risk: agents may hand-roll `jq`/`sed` and produce inconsistent `cycle-count.json` shapes across invocations. Not CRITICAL because the prompts are clear today, but worth recording as debt. | `docs/plans/active/2026-04-23-pipeline-max-cycles-cap.md:147` (Open question), no entry in `docs/tech-debt/README.md`. | Add a one-line entry to `docs/tech-debt/README.md` pointing to the plan, with the trigger "next time a `/codex-review` re-run miscounts or two skills disagree on JSON shape." Captured in the "Tech debt identified" section below. |
+| INFO | unnecessary-change | None. Every file in the diff is listed in the plan's "Affected areas" and every change maps to an Acceptance criterion. No formatting-only churn, no stray imports, no accidental file inclusions. | `git diff main...HEAD --stat` cross-referenced against plan lines 45-54. | No action. |
+
+## Positive notes
+
+- **Template parity is perfect.** All 8 mirrored file pairs (`scripts/` ↔ `templates/base/scripts/` and `.claude/` ↔ `templates/base/.claude/`) are byte-identical under `cmp`. This is exactly the discipline the reviewer memory (`pattern_mirror_discipline`) flags as commonly forgotten, and it was executed correctly across two separate commits (`5a42478` and `7568755`).
+- **Test coverage for the new variable is symmetrical with existing variables.** `test_defaults`, `test_env_override`, and `test_validate_all` each got one new assertion, and `validate_all` got an extra "rejects zero" case — consistent with the surrounding table-driven style.
+- **The cycle-counter semantics in the skills are internally consistent.** `/work` initializes `cycle: 1` at step 0.5.d; `/codex-review` Step 0 reads without incrementing; Step 7 increments only on user-chosen re-run; `/pr` deletes both state files on success. The arithmetic `CAP_REACHED = (cycle >= RALPH_STANDARD_MAX_PIPELINE_CYCLES)` correctly yields one re-run at the default cap of 2 (first run sees `cycle=1`, `CAP_REACHED=false`; second run sees `cycle=2`, `CAP_REACHED=true`).
+- **Rules file `.claude/rules/post-implementation-pipeline.md` got a well-placed new subsection ("Pipeline cycle cap") under "Re-run after Codex ACTION_REQUIRED fix" rather than a separate top-level section, which keeps the SSoT structure tidy.
+- **`/pr` SKILL.md correctly leaves state files in place on failure** (line 35) — this matches the plan's intent that "`/pr` 失敗時にカウンタが残ること（再実行で続きから数えられること）".
+- **No debug markers, no secret-like strings, no commented-out code, no leftover TODOs.** Hook scans and manual diff inspection came up clean.
+
+## Tech debt identified
+
+| Debt item | Impact | Why deferred | Trigger to pay down | Related plan/report |
+| --- | --- | --- | --- | --- |
+| Cycle-count and active-plan JSON manipulation lives only in skill prompt text; no `scripts/` helper. | Cross-skill drift risk: two skills could write mutually incompatible JSON shapes under edge conditions (missing file, partial write, concurrent `/work` sessions). | Plan explicitly chose skill-docs-only delta to minimize surface; Codex advisory #1 was see-and-deferred. | Next time `/codex-review` miscounts, or two skills disagree on JSON shape, or a user reports `active-plan.json` corruption. | `docs/plans/active/2026-04-23-pipeline-max-cycles-cap.md` (Open questions, "Codex 指摘 1"). |
+
+_(The table row above should also be appended to `docs/tech-debt/README.md`. This diff does not touch that file, so the append is a follow-up action — flagged here rather than quietly added to the diff.)_
+
+## Recommendation
+
+- Merge: **Yes, with one fix first.** The MEDIUM finding (Step 3 contradicting Step 0 in `/codex-review` SKILL.md) should be resolved before PR creation because it directly undermines the plan's adopted Codex adversarial finding #2. This is a one-line edit in two files (source + template). Everything else is LOW/INFO and can be handled as follow-ups.
+- Follow-ups:
+  - Fix the Step 3 rescan instruction to reference `active-plan.json` (both `.claude/skills/codex-review/SKILL.md:45` and its template mirror).
+  - Optional: clarify which options count as "re-run path" in `/codex-review` Step 7 (LOW).
+  - Optional: record the "script the counter" debt in `docs/tech-debt/README.md` (LOW).
+  - `/verify` should confirm `CLAUDE.md` / `AGENTS.md` / `README.md` sync (plan listed them as required; diff did not touch them). Out of scope for `/self-review`.
