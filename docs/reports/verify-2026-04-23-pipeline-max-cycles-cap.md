@@ -93,3 +93,32 @@ after touching the file locally. This confirms AC-adjacent assumption that the n
 - **Documentation drift flagged, not blocking:** (a) plan AC checkboxes are still unchecked (normal lag pattern), (b) `docs/tech-debt/README.md` does not yet record the "script the counter" debt item (self-review LOW — outside this plan's AC but worth a follow-up commit).
 
 No fix-and-revalidate cycle required from `/verify`. Proceed to `/test`.
+
+---
+
+## Cycle 2 verify (2026-04-23, commit `e27102a`)
+
+- Scope: Re-verify the two Codex ACTION_REQUIRED fixes only — `.claude/skills/work/SKILL.md` Step 0.5.d (preserve counter on plan_path match) and `.claude/skills/codex-review/SKILL.md` Case B cap-reached (AskUserQuestion with raise-cap/PR/abort). Both canonical files plus their `templates/base/` mirrors (4 paths total).
+- Evidence appended to `docs/evidence/verify-2026-04-23-pipeline-max-cycles-cap.log`.
+
+### Results
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| `./scripts/run-verify.sh` | exit 0 — "All verifiers passed." | Fresh evidence log `docs/evidence/verify-2026-04-23-094453.log`. |
+| `./scripts/check-sync.sh` | DRIFTED=0 (IDENTICAL=107, TEMPLATE_ONLY=9, KNOWN_DIFF=3) | PASS. |
+| Mirror byte-identity | `cmp -s` OK for both `work/SKILL.md` and `codex-review/SKILL.md` pairs | See log. |
+| AC #4 (Case A/B cycle-cap check) — spot | Still VERIFIED; Case B cap-reached now fully specified at `.claude/skills/codex-review/SKILL.md:115-120` | — |
+| AC #5 (cap-reached drops "修正", offers 3 options) — spot | Still VERIFIED and **strengthened**: Case B cap-reached now has the same 3-option AskUserQuestion (raise cap / PR / 中止) as Case A, resolving the cycle-1 Case B gap | `:115-120`. |
+| AC #6 (work Step 0.5 lifecycle) — spot | Still VERIFIED and **strengthened**: Step 0.5.d now branches on (i) missing, (ii) plan_path match → preserve, (iii) plan_path mismatch → AskUserQuestion | `.claude/skills/work/SKILL.md:22-26`. |
+| Contradiction check vs `.claude/rules/post-implementation-pipeline.md:40` | None. The rule says cap-reached drops "fix" and offers (1) raise cap, (2) PR + known gaps, (3) abort. Case B cap-reached at `:115-120` matches exactly | — |
+| Contradiction check vs plan line 40 | None. Plan specifies "上限解除 / PR 作成 / 中止"; both Case A and Case B cap-reached branches implement these three | — |
+
+### Verdict
+
+**PASS.** Cycle 2 fixes are correctly implemented, mirrored, and internally consistent with both `post-implementation-pipeline.md:40` and plan line 40. No new findings. Cycle-1 verdict stands.
+
+### Notes
+
+- Uncommitted edit in working tree: `docs/reports/self-review-2026-04-23-pipeline-max-cycles-cap.md` (cycle-2 re-review section appended by reviewer). Not a verify blocker — docs report only.
+- Cycle-1 AC-checkbox drift (plan `:68-80` still `[ ]`) unchanged; still flagged as non-blocking doc drift per prior pattern.

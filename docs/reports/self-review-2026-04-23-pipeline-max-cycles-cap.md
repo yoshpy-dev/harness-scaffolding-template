@@ -56,3 +56,39 @@ _(The table row above should also be appended to `docs/tech-debt/README.md`. Thi
   - Optional: clarify which options count as "re-run path" in `/codex-review` Step 7 (LOW).
   - Optional: record the "script the counter" debt in `docs/tech-debt/README.md` (LOW).
   - `/verify` should confirm `CLAUDE.md` / `AGENTS.md` / `README.md` sync (plan listed them as required; diff did not touch them). Out of scope for `/self-review`.
+
+---
+
+## Cycle 2 re-review (2026-04-23, commit `e27102a`)
+
+- Scope: Focused re-review of the Codex ACTION_REQUIRED fix commit only. Two files touched plus their `templates/base/` mirrors: `.claude/skills/work/SKILL.md` (Step 0.5.d) and `.claude/skills/codex-review/SKILL.md` (Case B cap-reached branch).
+- Method: `git diff 7f3e9f5..e27102a --` on the 4 paths; `cmp` on both mirror pairs; side-by-side comparison of Case A vs Case B cap-reached wording; inspection of `/work` Step 0.5.d's three-branch logic.
+
+### Evidence reviewed
+
+- Both mirrors byte-identical under `cmp` (`.claude/skills/work/SKILL.md` ↔ `templates/base/.claude/skills/work/SKILL.md`; same for `codex-review`).
+- `/work` Step 0.5.d now enumerates 3 branches: (i) file missing → initialize `cycle: 1`; (ii) file exists AND `plan_path` matches → preserve existing counter; (iii) file exists AND `plan_path` differs → AskUserQuestion (reset vs abort). All three scenarios covered.
+- `/codex-review` Case B cap-reached branch now invokes AskUserQuestion with 3 options (raise cap / PR / abort), symmetric with Case A cap-reached (lines 102–107 vs 115–120).
+- Step 7's re-run increment wording (line 126) already explicitly names "the cap-reached `上限を一時的に引き上げて再実行` option" as a re-run path — covers both Case A Option 1 and Case B Option 1 without further edits. The cycle-1 LOW finding on enumerating re-run paths is partially addressed as a byproduct.
+
+### Findings (cycle 2 only)
+
+| Severity | Area | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- | --- |
+| LOW | readability / copy-paste consistency | Case A Option 1 says `have the user set a higher ... (e.g. export it) and re-run`; Case B Option 1 says `have the user export a higher ... and re-run`. Same intent, slightly different wording. Not a defect; only worth flagging because the triage report explicitly asked for copy/paste symmetry. | `.claude/skills/codex-review/SKILL.md:105` vs `:118` | Optional: align to one phrasing ("export a higher ... and re-run"). Non-blocking. |
+| LOW | readability / copy-paste consistency | Case A Option 2 label is `指摘は記録し PR を作成する` (explicit "record findings" verb in the label); Case B Option 2 label is just `PR を作成する` with the recording behavior only in the English gloss. Agents parsing only the Japanese label may miss the "add to Known gaps" step for Case B. | `.claude/skills/codex-review/SKILL.md:106` vs `:119` | Optional: change Case B label to `指摘は記録し PR を作成する` for parity. Non-blocking. |
+| INFO | naming | Case B header parenthetical (`cap-reached flow, Case B variant`) is slightly asymmetric with Case A's (`cap-reached flow`). Accurate and readable; no action. | `.claude/skills/codex-review/SKILL.md:102`, `:115` | None. |
+
+No CRITICAL, HIGH, or MEDIUM findings introduced by the fix. Pre-existing cycle-1 MEDIUM (Step 3 rescan contradiction) is untouched by this commit and remains outside cycle-2 scope.
+
+### Positive notes (cycle 2)
+
+- Step 0.5.d's three-branch structure is the minimum sound contract: initialize / preserve / conflict-resolve. The "Inform the user of the resumed cycle number" sentence is a nice operator-visibility touch.
+- The Case B cap-reached edit reuses Case A's exact question template, swapping only `要対応` → `検討推奨`. Symmetry achieved.
+- Step 7 already accounted for the new cap-reached re-run path via the `(including the cap-reached ...)` parenthetical — no additional edit was needed, which is the right minimal change.
+- Mirror discipline maintained across both edits; no mirror drift risk.
+- No new debug code, no secrets, no swallowed errors introduced.
+
+### Verdict — cycle 2
+
+**Pass.** The fix commit resolves both ACTION_REQUIRED findings as described, with no new CRITICAL/HIGH/MEDIUM issues. The two LOW copy-paste consistency nits are optional polish and do not block PR. Mirror parity is intact.

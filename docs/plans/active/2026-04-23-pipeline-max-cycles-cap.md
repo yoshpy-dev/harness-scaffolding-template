@@ -165,4 +165,5 @@
 - [x] Review artifact created (`docs/reports/self-review-2026-04-23-pipeline-max-cycles-cap.md`)
 - [x] Verification artifact created (`docs/reports/verify-2026-04-23-pipeline-max-cycles-cap.md`, verdict: PASS)
 - [x] Test artifact created (`docs/reports/test-2026-04-23-pipeline-max-cycles-cap.md`, verdict: PASS — 27/27 + 40/40)
+- [x] Cycle 2 sync-docs (after codex fix commit e27102a — self-review/verify/test PASS, check-sync DRIFTED=0)
 - [ ] PR created
