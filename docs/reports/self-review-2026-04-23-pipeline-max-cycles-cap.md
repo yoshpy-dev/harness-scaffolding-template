@@ -92,3 +92,37 @@ No CRITICAL, HIGH, or MEDIUM findings introduced by the fix. Pre-existing cycle-
 ### Verdict — cycle 2
 
 **Pass.** The fix commit resolves both ACTION_REQUIRED findings as described, with no new CRITICAL/HIGH/MEDIUM issues. The two LOW copy-paste consistency nits are optional polish and do not block PR. Mirror parity is intact.
+
+---
+
+## Cycle 3 re-review (2026-04-23, commit `12b87ee`)
+
+- Scope: Cycle-2 Codex ACTION_REQUIRED fixes only. 5 files: `/work` SKILL (Step 0 → 0.5 → 0.7 reorder), `/codex-review` SKILL Step 7 (cap-override no-increment), triage report, plus both `templates/base/` mirrors.
+- Method: `git show --stat 12b87ee`; `cmp` on both mirror pairs; `grep "Step 0\.5|Step 0\.7"` across `.claude/skills/` and `templates/` for dangling refs; inspection of Step 7's two-bullet structure against Case A/B Option 1 wording.
+
+### Evidence reviewed
+
+- Template parity: `cmp` PASS on both pairs (`work/SKILL.md`, `codex-review/SKILL.md` vs their `templates/base/` mirrors — byte-identical).
+- Step renumbering: `0 → 0.5 → 0.7 → 1`. Step 0 now owns plan-path resolution; Step 0.5 reads "based on the plan resolved in Step 0" (:14) and uses "resolved plan" in (a) and (e) (:15, :19); Step 0.7(b) references "the Step-0 resolved absolute path" (:22). No downstream step reads the plan before Step 0.
+- Dangling-reference check: no live `.claude/skills/**` or `templates/**` file references the removed `Step 0.5.d` label. Historical mentions only survive in the plan (`docs/plans/active/...:94`) and prior cycle reports, which is correct — those are historical artifacts.
+- Step 7 (`codex-review/SKILL.md:125-127`) now has two explicit bullets: non-cap re-run increments; cap-reached Option 1 does NOT increment and instructs the user to `export RALPH_STANDARD_MAX_PIPELINE_CYCLES=<current cycle + 1>`. Case A Option 1 at :105 and Case B Option 1 at :118 both say "上限を一時的に引き上げて再実行" — verbatim match with Step 7's cap-override bullet. Routing is coherent.
+- Triage report header updated to `Cycle: 2/2 (cap reached)` with cycle-1 findings archived as historical, cycle-2 ACTION_REQUIRED entries renumbered `#3`, `#4`. Counts consistent (`ACTION_REQUIRED=2, WORTH_CONSIDERING=0, DISMISSED=0`).
+
+### Findings (cycle 3 only)
+
+No CRITICAL, HIGH, or MEDIUM findings introduced by this commit.
+
+| Severity | Area | Finding | Evidence | Recommendation |
+| --- | --- | --- | --- | --- |
+| LOW | readability | Step 7 cap-override bullet says `<current cycle + 1>` as the env var value, which is correct for raising the cap by +1 but hides the nuance that users who want N extra passes must set `<current cycle + N>`. Rationale sentence captures the "why" but not the N-pass generalization. | `.claude/skills/codex-review/SKILL.md:127` | Optional: add "(or higher for multiple extra passes)". Non-blocking. |
+
+### Positive notes (cycle 3)
+
+- The three-step split (0 resolve → 0.5 branch → 0.7 pin) is the minimum sound ordering: plan selection precedes every plan-file mutation and every state-file write. Addresses cycle-2 ACTION_REQUIRED #3 at the root cause rather than patching individual operations.
+- Step 7's explicit two-bullet structure (non-cap vs cap-override) eliminates the cycle-1 LOW finding that asked for enumeration of re-run paths. Both paths now name their trigger conditions.
+- Cap-override rationale is inline ("incrementing here would immediately re-trip the raised cap") — future agents won't need to reconstruct the reasoning.
+- Mirror discipline maintained; no new debug code, secrets, swallowed errors, or unrelated edits.
+
+### Verdict — cycle 3
+
+**Pass.** Both cycle-2 ACTION_REQUIRED findings are resolved at the root cause. Template parity intact, renumbering internally consistent with no dangling references, cap-override wording coherent across Case A Option 1, Case B Option 1, and Step 7. One optional LOW nit. Merge-ready from the diff-quality perspective.

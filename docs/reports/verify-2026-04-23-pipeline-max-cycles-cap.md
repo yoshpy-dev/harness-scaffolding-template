@@ -122,3 +122,24 @@ No fix-and-revalidate cycle required from `/verify`. Proceed to `/test`.
 
 - Uncommitted edit in working tree: `docs/reports/self-review-2026-04-23-pipeline-max-cycles-cap.md` (cycle-2 re-review section appended by reviewer). Not a verify blocker — docs report only.
 - Cycle-1 AC-checkbox drift (plan `:68-80` still `[ ]`) unchanged; still flagged as non-blocking doc drift per prior pattern.
+
+---
+
+## Cycle 3 verify (2026-04-23, commit `12b87ee`)
+
+- Scope: Codex ACTION_REQUIRED fix — `/work` step reorder (0 resolve plan → 0.5 branch → 0.7 pin+counter) and removal of counter increment on `/codex-review` cap-override path.
+
+### Results
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| `./scripts/run-verify.sh` | exit 0 — "All verifiers passed." | `docs/evidence/verify-2026-04-23-100326.log`. |
+| `./scripts/check-sync.sh` | DRIFTED=0 (IDENTICAL=107). | PASS. |
+| Mirror byte-identity (work + codex-review) | `shasum` identical for both pairs | `0396287…` work, `007dc75…` codex-review. |
+| `/work` step reorder | VERIFIED | `.claude/skills/work/SKILL.md:9` Step 0 resolve → `:14` Step 0.5 branch → `:20-27` Step 0.7 pin+counter. `:25` preserves counter on plan_path match. |
+| Cap-override no increment | VERIFIED | `.claude/skills/codex-review/SKILL.md:127` explicitly: "Do **NOT** increment `cycle-count.json`". Case A non-cap path at `:126` still increments. |
+| Contradiction vs `post-implementation-pipeline.md:40` | None | Rule says "raise the cap"; SKILL.md:127 raises via `export` and leaves counter unchanged so the raised cap grants one extra pass. Honored. |
+
+### Verdict
+
+**PASS.** Cycle 3 fix correctly reorders `/work` Steps 0/0.5/0.7 and preserves counter semantics on cap-override. Cycles 1 & 2 verdicts stand.
