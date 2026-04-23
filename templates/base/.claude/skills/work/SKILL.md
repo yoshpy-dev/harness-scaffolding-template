@@ -12,7 +12,16 @@ Work from the active plan, not from memory alone.
    c. If already on a feature branch (not main/master), skip creation.
    d. Otherwise, run `git checkout -b <branch-name>`.
    e. Update the plan file: replace `Branch: TBD` (or any TBD variant) with the actual branch name.
-1. Read the current active plan in `docs/plans/active/`.
+0.5. **Pin the active plan and initialize the pipeline cycle counter** (enforces the 2-cycle cap):
+   a. Determine the target plan path:
+      - If exactly one file or directory exists under `docs/plans/active/` (excluding `.gitkeep`), use it.
+      - If multiple candidates exist, ask via AskUserQuestion which plan this `/work` run targets, and use the selected path.
+      - If none exist, stop and ask the user to run `/plan` first.
+   b. Create `.harness/state/standard-pipeline/` if missing (`mkdir -p`). This directory is already covered by the existing `.harness/state/` gitignore.
+   c. Write the resolved absolute path to `.harness/state/standard-pipeline/active-plan.json` as `{"plan_path": "<absolute-path>", "created_at": "<UTC ISO8601>"}`. If the file already exists with a different `plan_path`, warn the user and ask whether to overwrite (resume) or abort.
+   d. Initialize `.harness/state/standard-pipeline/cycle-count.json` as `{"plan_path": "<absolute-path>", "cycle": 1}`. This counts the **current** pipeline run (1 = first run, 2 = one re-run after Codex ACTION_REQUIRED).
+   e. Downstream skills (`/codex-review`, `/pr`) MUST read `active-plan.json` instead of rescanning `docs/plans/active/`.
+1. Read the current active plan using the path recorded in `active-plan.json`.
 2. Confirm acceptance criteria, verify plan, and test plan before editing code.
 3. Implement in small slices that can be reviewed and verified independently.
 3a. **Commit after each verified slice** (Validation Gate):
@@ -30,8 +39,8 @@ Work from the active plan, not from memory alone.
    b. `Task(subagent_type="verifier")` → `/verify` — stop if fail verdict
    c. `Task(subagent_type="tester")` → `/test` — stop if fail verdict
    d. `Task(subagent_type="doc-maintainer")` → `/sync-docs`
-   e. **Invoke `/codex-review` via the Skill tool** (optional, inline — if Codex CLI unavailable, skip to `/pr`)
-   f. **Invoke `/pr` via the Skill tool** — do NOT run `gh pr create` directly. The `/pr` skill enforces the Japanese template, pre-checks, and plan archiving.
+   e. **Invoke `/codex-review` via the Skill tool** (optional, inline — if Codex CLI unavailable, skip to `/pr`). The skill reads `cycle-count.json` and enforces `RALPH_STANDARD_MAX_PIPELINE_CYCLES` (default 2). On re-run after ACTION_REQUIRED fixes, `/codex-review` increments `cycle-count.json`.
+   f. **Invoke `/pr` via the Skill tool** — do NOT run `gh pr create` directly. The `/pr` skill enforces the Japanese template, pre-checks, and plan archiving. On success, `/pr` deletes `.harness/state/standard-pipeline/active-plan.json` and `cycle-count.json`.
 
 ## Scope discipline
 

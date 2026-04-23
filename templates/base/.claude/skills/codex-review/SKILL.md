@@ -19,6 +19,14 @@ Provide a cross-model second opinion on the current diff before PR creation.
 
 ## Steps
 
+0. **Resolve active plan identity and read cycle counter** (standard flow cap enforcement):
+   a. Read `.harness/state/standard-pipeline/active-plan.json` to get the pinned plan path. If missing, warn the user, fall back to selecting the most recently modified file under `docs/plans/active/`, and continue without a persisted identity (the cap cannot be enforced in this fallback mode).
+   b. Read `.harness/state/standard-pipeline/cycle-count.json`. If missing, initialize `{"plan_path": "<path>", "cycle": 1}` (first /codex-review run of this plan).
+   c. Read `RALPH_STANDARD_MAX_PIPELINE_CYCLES` by sourcing `./scripts/ralph-config.sh` in a subshell (default `2`).
+   d. Record the current cycle number and the cap for use in Step 6.
+
+   **Hard prohibition**: Do NOT rediscover the plan by rescanning `docs/plans/active/` once `active-plan.json` exists. Always consume the persisted path. This prevents cross-plan counter leakage when multiple plans coexist.
+
 1. **Check Codex availability**:
    Run `./scripts/codex-check.sh` via Bash.
    If exit 1: note "Codex CLI not available — skipping to /pr" and invoke /pr.
@@ -71,6 +79,7 @@ Provide a cross-model second opinion on the current diff before PR creation.
    - Triage rationale (1-2 sentences per finding to limit token cost)
    - Dismissal reasons with category for all DISMISSED findings
    - Summary counts in the header
+   - Current cycle and cap (from Step 0) in the header, e.g. `Cycle: 2/2 (cap reached)`
 
 5. **Present triaged findings**:
    Display findings grouped by classification:
@@ -79,28 +88,39 @@ Provide a cross-model second opinion on the current diff before PR creation.
    - **DISMISSED**: Show count and note that details are in the triage report. Example: "除外: N 件（詳細は docs/reports/codex-triage-<slug>.md を参照）"
 
 6. **User decision**:
-   Branch based on triage results:
+   Branch based on triage results **and** on whether the pipeline cycle cap has been reached (see Step 0 — cycle vs `RALPH_STANDARD_MAX_PIPELINE_CYCLES`).
+
+   Let `CAP_REACHED = (cycle >= RALPH_STANDARD_MAX_PIPELINE_CYCLES)`. At the default cap of 2, `CAP_REACHED` is true during the second (and final) `/codex-review` run.
 
    **Case A — ACTION_REQUIRED findings exist**:
-   Use AskUserQuestion:
-   - Question: "Codex レビューで要対応の指摘があります。どう対応しますか？"
-   - Options:
-     1. 修正する — fix ACTION_REQUIRED issues, then re-run the full post-implementation pipeline: /self-review → /verify → /test → /sync-docs → /codex-review
-     2. WORTH_CONSIDERING も確認する — review both ACTION_REQUIRED and WORTH_CONSIDERING, then decide
-     3. 指摘を確認済み、PR を作成する — proceed to /pr
+   - If NOT `CAP_REACHED`: Use AskUserQuestion:
+     - Question: "Codex レビューで要対応の指摘があります。どう対応しますか？"
+     - Options:
+       1. 修正する — fix ACTION_REQUIRED issues, then re-run the full post-implementation pipeline: /self-review → /verify → /test → /sync-docs → /codex-review
+       2. WORTH_CONSIDERING も確認する — review both ACTION_REQUIRED and WORTH_CONSIDERING, then decide
+       3. 指摘を確認済み、PR を作成する — proceed to /pr
+   - If `CAP_REACHED` (cap-reached flow): Use AskUserQuestion:
+     - Question: "パイプライン再実行の上限（`RALPH_STANDARD_MAX_PIPELINE_CYCLES=<cap>`）に到達しました。要対応の指摘が残っていますが、どうしますか？"
+     - Options:
+       1. 上限を一時的に引き上げて再実行 — have the user set a higher `RALPH_STANDARD_MAX_PIPELINE_CYCLES` (e.g. export it) and re-run the pipeline
+       2. 指摘は記録し PR を作成する — add unresolved ACTION_REQUIRED findings to the PR body's Known gaps section, then proceed to /pr
+       3. 中止 — stop without creating a PR; the user will resume manually
 
    **Case B — No ACTION_REQUIRED, but WORTH_CONSIDERING exist**:
-   Use AskUserQuestion:
-   - Question: "Codex レビューで検討推奨の指摘があります（要対応はなし）。どう対応しますか？"
-   - Options:
-     1. 検討して修正する — review WORTH_CONSIDERING findings, fix as needed, then re-run the full post-implementation pipeline: /self-review → /verify → /test → /sync-docs → /codex-review
-     2. PR を作成する — proceed to /pr
+   - If NOT `CAP_REACHED`: Use AskUserQuestion:
+     - Question: "Codex レビューで検討推奨の指摘があります（要対応はなし）。どう対応しますか？"
+     - Options:
+       1. 検討して修正する — review WORTH_CONSIDERING findings, fix as needed, then re-run the full post-implementation pipeline: /self-review → /verify → /test → /sync-docs → /codex-review
+       2. PR を作成する — proceed to /pr
+   - If `CAP_REACHED`: Skip the re-run option and proceed directly to /pr, noting the cap in the triage report.
 
    **Case C — All findings DISMISSED (or no findings)**:
    Note "Codex: 全指摘トリアージ済み（要対応なし）— トリアージレポート: docs/reports/codex-triage-<slug>.md" and proceed to /pr.
 
 7. **Proceed**:
-   Based on user choice, either guide them back to fix-and-revalidate, or invoke /pr.
+   - If the user chooses a re-run path AND `active-plan.json` exists: increment `cycle-count.json` (`cycle += 1`), then guide them back to `/self-review`.
+   - If the user chooses `/pr`: invoke /pr (which is responsible for deleting `active-plan.json` and `cycle-count.json` on success).
+   - If the user chooses 中止: stop without invoking /pr; leave state files in place so the next `/work` can resume.
 
 ## What /codex-review does NOT do
 
