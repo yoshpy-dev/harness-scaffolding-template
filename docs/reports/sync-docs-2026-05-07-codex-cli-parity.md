@@ -71,3 +71,53 @@ None for this sync-docs pass. The four documentation gaps already identified by 
 Documentation surface is now consistent with the implementation. All updates were narrow corrections of stale or missing references; no documentation was rewritten or generated from scratch. The drift candidates listed in the parent prompt are all resolved or were already aligned.
 
 Recommendation: proceed to `/cross-review`. No documentation-driven follow-up work is required for the merge.
+
+---
+
+## Cycle 2 (2026-05-07)
+
+Cycle 1 cross-review (`docs/reports/cross-review-triage-2026-05-07-codex-cli-parity.md`) returned ACTION_REQUIRED, triggering a fix-and-revalidate pass. Cycle 2 commits since the cycle-1 sync-docs:
+
+- `3abd1d7` — cross-review ACTION_REQUIRED fix: `probeBinary` now actually runs `<bin> --version` (catches stale shims), `templates/base/.codex/config.toml` ships two default-on `PostToolUse` mojibake hooks, `docs/reports/templates/cross-review-triage-report.md` becomes bidirectional (Driver/Reviewer/Triager placeholders, "Reviewer finding" column captions). Mirrored into `templates/base/`.
+- `79d7a73` — cycle-2 self-review CRITICAL fix: corrected the Codex hook script paths from the bogus `./scripts/check_mojibake.sh` and `./scripts/commit-msg-guard.sh` (the latter would exit 1 on every commit because it expects a git commit-msg `$1`) to the real `./.claude/hooks/check_mojibake.sh` path; reverted the commit-msg hook entry to a comment-only stanza pointing at the correct `.git/hooks/` install path. `probeBinary` hardened with a 5s timeout, first-non-empty-line output, and a symmetric `LookPath` / `--version` error wrap. Tech-debt row for the missing-timeout case marked RESOLVED 79d7a73 with traceability.
+
+### Cycle-2 method
+
+Walked the seven surfaces flagged by the parent prompt. For each, compared the on-disk doc against the actual implementation (current `.codex/config.toml` template, current `probeBinary` body, current bidirectional triage template). No documentation was rewritten or generated from scratch.
+
+### Updated in cycle 2
+
+| File | What drifted | Fix applied |
+| --- | --- | --- |
+| `templates/base/.codex/README.md` (Hooks section) | Said "Add new entries to both surfaces" with no acknowledgement that the template now ships two default-on `PostToolUse` mojibake hooks. A reader following the README to a fresh `ralph init` would not know the hooks already exist, and would not learn the `commit-msg-guard.sh` wiring trap that 79d7a73 had to fix. | Rewrote the section to lead with "ships default-on with two `PostToolUse` hooks pointing at `./.claude/hooks/check_mojibake.sh`", explain that they satisfy `ralph doctor`'s hook-entry check on first init, and call out explicitly that `scripts/commit-msg-guard.sh` is a git `commit-msg` hook (consumes `$1`) — not a Codex `PostToolUse` hook — so attaching it to `^git commit` would exit 1 on every commit. |
+
+### Confirmed already-aligned in cycle 2
+
+| File | Why it is in sync (no edit needed) |
+| --- | --- |
+| `README.md` | The "Features" / "Operating loop" / "Portability" / "Known differences" sections do not enumerate individual `[hooks]` entries, so the cycle-2 default-on change does not regress any sentence here. The pipeline-order references and bidirectional cross-review wording landed in cycle-1 and remain valid. |
+| `AGENTS.md` (root) | No mention of specific Codex hook entries, only `templates/base/.codex/` as the surface. The `.codex/config.toml` cycle-2 contents are an internal template detail, not an AGENTS-level contract. |
+| `templates/base/AGENTS.md` | Same as above — references `.codex/config.toml` and `[hooks]` as a surface, not its specific entries. The "Codex setup checklist" still describes `codex trust .` + `ralph doctor` correctly. |
+| `CLAUDE.md` (root) | Lists `.claude/hooks/` and points at the Codex equivalent at the directory level. The cycle-2 hook-script-path fix is invisible at this level of abstraction. |
+| `templates/base/CLAUDE.md` | Same as root CLAUDE.md — directory-level reference only. |
+| `.codex/README.md` (root) | Repo does not ship a root `.codex/` directory (verified with `ls`). The active `.codex/README.md` is the template body, which is what cycle 2 edited. |
+| `docs/recipes/codex-setup.md` (root + template) | "[hooks] entries are visible" warning text remains correct: doctor still warns if a user strips the default-on hooks. The recipe does not describe the specific default entries, so no drift. The two files are byte-identical (`diff -u` empty). |
+| `docs/quality/definition-of-done.md` | No mention of specific hook entries; the parity checklist and pipeline-order rules from cycle-1 stand as written. |
+| `docs/architecture/repo-map.md` | The `templates/base/.codex/` line names `config.toml`, `hooks/`, `AGENTS.override.md`, `README.md` as the surface. No drift from cycle-2 — only `config.toml` body changed, which is internal to the template. |
+| `internal/cli/doctor.go::probeBinary` (referenced from plan AC-1b / AC-6) | The plan's AC-1b/AC-6 describe doctor's contract at the CLI-detection + version + effective-config level. The cycle-2 hardening (5s timeout, first-line truncation, symmetric error wrap) is internal to `probeBinary` and does not change the contract observed by `ralph doctor` callers. No plan or spec edit needed. |
+| `docs/reports/templates/cross-review-triage-report.md` (root + template) | Already bidirectional after `3abd1d7`. `diff -u` between root and template is empty. Greps over `docs/`, `.claude/`, `.agents/`, `templates/base/` for `Codex finding` returned only the pipeline-cycle prose (`When fixing Codex findings, ...`) which describes the act of fixing reviewer findings when Codex is the reviewer — that wording remains accurate and is unrelated to template column captions. |
+| `docs/tech-debt/README.md` | Already records the cycle-2 entries (`checkHooks` not extended to `.codex/`, plus the now-RESOLVED `probeBinary` no-timeout row preserved with the strikethrough + RESOLVED comment for traceability). No further edits in this pass. |
+
+### Cycle-2 cross-references verified
+
+- `grep -rn "Codex finding\|codex finding"` over `docs/recipes/`, `docs/quality/`, `.claude/rules/`, `.claude/skills/`, `.agents/skills/`, `templates/base/`, `AGENTS.md`, `CLAUDE.md`, `README.md`: only hits are the pipeline-cycle prose in `post-implementation-pipeline.md` (root + template) and the orchestrator script string. None reference the triage template column captions.
+- `diff -u docs/recipes/codex-setup.md templates/base/docs/recipes/codex-setup.md`: empty — root/template still in lock-step.
+- `diff -u docs/reports/templates/cross-review-triage-report.md templates/base/docs/reports/templates/cross-review-triage-report.md`: empty — bidirectional template mirrored.
+- Tech-debt RESOLVED comment for `probeBinary` timeout matches the actual code in `internal/cli/doctor.go:121-140` (5s `context.WithTimeout`, first-non-empty-line return, symmetric `LookPath`/`--version` error wrap).
+- `templates/base/.codex/config.toml` `[[hooks.PostToolUse]]` entries point at `./.claude/hooks/check_mojibake.sh`, which exists at both `templates/base/.claude/hooks/check_mojibake.sh` and the root `.claude/hooks/check_mojibake.sh`.
+
+### Cycle-2 verdict
+
+The only documentation surface that drifted in cycle 2 was the `templates/base/.codex/README.md` Hooks section (it was still describing the pre-cycle-1 "no default entries — add your own" model). All other surfaces flagged by the parent prompt were already aligned. The cycle-2 implementation changes (`probeBinary` hardening, hook-path repair) are either internal-helper details not exposed in any documented contract, or were correctly anticipated by cycle-1 phrasing.
+
+Recommendation: proceed to `/cross-review` (cycle 2/2 — cap reached after this cycle per `RALPH_STANDARD_MAX_PIPELINE_CYCLES=2`). No further documentation-driven follow-up work is required for the merge.

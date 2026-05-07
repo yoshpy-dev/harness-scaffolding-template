@@ -66,6 +66,19 @@ hash-based diff engine can be replayed cleanly. Skill renames are surfaced as
 ## Hooks
 
 Project-level Codex hooks live in `.codex/config.toml` under `[hooks]`. They
-shell out to the same `scripts/` used by `.claude/hooks/`, so behaviour stays
-identical across the two CLIs. Add new entries to both surfaces (or factor the
-real logic into `scripts/` and reference it from each side).
+shell out to the same scripts under `.claude/hooks/`, so behaviour stays
+identical across the two CLIs.
+
+The template ships **default-on** with two `PostToolUse` hooks that point at
+`./.claude/hooks/check_mojibake.sh` (one for `Edit`, one for `Write`). These
+satisfy `ralph doctor`'s "at least one `[hooks]` entry visible" check on a
+fresh `ralph init` and reuse the same script the Claude side calls, so a
+single edit to `check_mojibake.sh` covers both CLIs.
+
+To extend the hook surface, add new `[[hooks.<event>]]` entries that point at
+real scripts — and add the matching Claude-side hook in `.claude/settings.json`
+when behaviour parity matters. `scripts/commit-msg-guard.sh` is intentionally
+**not** wired as a Codex `PostToolUse` hook: it is a git `commit-msg` hook
+(consumes `$1` = path to `COMMIT_EDITMSG`) and would exit 1 on every commit if
+attached to `^git commit`. Install it as `.git/hooks/commit-msg` instead, or
+write a Codex-shaped wrapper before adding a `PostToolUse` entry.

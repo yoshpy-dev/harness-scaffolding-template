@@ -146,3 +146,110 @@ No failures.
 - **Recommendation:** proceed to `/sync-docs` → `/cross-review` → `/pr`. The
   three test gaps above are tracked here and in the plan's Risks; none of
   them block the merge per the acceptance criteria.
+
+---
+
+## Cycle 2 (cap-reached) re-test
+
+- Date: 2026-05-07
+- Cycle: 2/2 — `RALPH_STANDARD_MAX_PIPELINE_CYCLES=2`. Cap is reached after this run.
+- Tester: `tester` subagent (Claude Opus 4.7, 1M context)
+- Scope: cycle-2 delta only — commits `3abd1d7` (cross-review ACTION_REQUIRED fix — `probeBinary`, default Codex hooks, bidirectional triage template) and `79d7a73` (self-review CRITICAL fix — repaired hook paths in `templates/base/.codex/config.toml`, removed misapplied `^git commit` PostToolUse wiring, added `probeBinary` 5s timeout / first-non-empty-line return / symmetric LookPath+run error handling).
+- Evidence:
+  - `docs/evidence/test-2026-05-07-codex-cli-parity-pass2.log` (`./scripts/run-test.sh`)
+  - `docs/evidence/test-2026-05-07-codex-cli-parity-pass2-go-verbose.log` (`go test ./... -count=1 -v`)
+  - `docs/evidence/verify-2026-05-07-100810.log` (auto-emitted by `run-verify.sh` during `run-test.sh` rerun)
+- Companion artifact: cycle-2 verify section in `docs/reports/verify-2026-05-07-codex-cli-parity.md` (Pass).
+
+### Cycle-2 test execution
+
+| Suite / Command | Tests | Passed | Failed | Skipped | Duration |
+| --- | --- | --- | --- | --- | --- |
+| `./scripts/run-test.sh` (aggregate, exit 0) | — | OK | 0 | 2 (Go mock-FS) | ~25 s wall |
+| `tests/test-check-mojibake.sh` | 11 | 11 | 0 | 0 | < 1 s |
+| `tests/test-check-skill-sync.sh` | 6 | 6 | 0 | 0 | < 1 s |
+| `go test ./... -count=1 -v` (top-level cases) | 222 | 220 | 0 | 2 | 24.5 s sum |
+| `go test ./... -count=1 -v` (incl. subtests, `=== RUN`) | 323 | 321 | 0 | 2 | — |
+
+Per-package Go totals (all `ok`, with `-count=1` so cycle-2 source compiled fresh):
+
+| Package | Top-level tests | Wall | Result |
+| --- | --- | --- | --- |
+| `internal/action` | 9 | 4.64 s | ok |
+| `internal/cli` | **31** (was 29 in cycle 1; +2 from `TestProbeBinary_*`) | 3.91 s | ok |
+| `internal/config` | 5 | 1.20 s | ok |
+| `internal/scaffold` | 14 | 2.27 s | ok |
+| `internal/state` | 12 | 1.55 s | ok |
+| `internal/ui` | 41 | 2.95 s | ok |
+| `internal/ui/panes` | 57 | 4.04 s | ok |
+| `internal/upgrade` | 39 | 3.04 s | ok |
+| `internal/watcher` | 14 | 4.89 s | ok |
+
+### Targeted verification of cycle-2 surfaces (per request)
+
+All requested cases ran in a single `go test ./internal/cli -run "TestProbeBinary|TestCheckCodexEffectiveConfig|TestExecuteInit_RendersCodexSurfaces" -v -count=1` invocation (exit 0, package `ok` 0.403 s):
+
+| Test | Cycle-1 status | Cycle-2 status | Notes |
+| --- | --- | --- | --- |
+| `TestProbeBinary_BrokenShimFails` | n/a (added cycle 2) | **PASS** (0.13 s) | New cycle-2 test. Confirms a binary that exists on PATH but fails `--version` is reported as fail (symmetric error handling — same shape as missing binary). |
+| `TestProbeBinary_MissingBinary` | n/a (added cycle 2) | **PASS** (0.00 s) | New cycle-2 test. Confirms `LookPath` failure surfaces as fail with consistent error message. |
+| `TestCheckCodexEffectiveConfig_MissingFile` | PASS | **PASS** | Unchanged behaviour. Warn-only when `.codex/config.toml` absent. |
+| `TestCheckCodexEffectiveConfig_MissingFeatureFlag_Warns` | PASS | **PASS** | Unchanged. `[features] codex_hooks = true` absent → warn. |
+| `TestCheckCodexEffectiveConfig_NoHooks_Warns` | PASS | **PASS** | Unchanged. Empty `[hooks.*]` → warn. |
+| `TestCheckCodexEffectiveConfig_FullyWired` | PASS | **PASS** | Unchanged. Cycle-2 default-on hooks (`Edit` + `Write` PreToolUse referencing `.claude/hooks/check_mojibake.sh`) still produce `pass — codex_hooks=true, 2 hook entry(ies). Confirm 'codex trust .' ran for this project`. |
+| `TestCheckCodexEffectiveConfig_InvalidTOML_Fails` | PASS | **PASS** | Unchanged. Malformed TOML still surfaces as fail. |
+| `TestExecuteInit_RendersCodexSurfaces` | PASS | **PASS** (0.03 s) | Re-run to confirm `79d7a73`'s `templates/base/.codex/config.toml` edit (hook content change, layout unchanged) does not break the three-tier scaffold (`base 9 files / pack/golang 2 files / .ralph/manifest.toml`). |
+
+All eight cases PASS under cycle-2 source. No regressions.
+
+### New tests since cycle 1 (delta)
+
+| Test | Package / file | Plan AC mapping | Cycle-2 status |
+| --- | --- | --- | --- |
+| `TestProbeBinary_BrokenShimFails` | `internal/cli/cli_test.go` | AC-6 (CLI detection now exercises actual `--version` invocation, not just `LookPath`) | PASS |
+| `TestProbeBinary_MissingBinary` | `internal/cli/cli_test.go` | AC-6 (warn-only path when binary absent) | PASS |
+
+These two cases close the cycle-1 test gap #4 ("Codex CLI absence path … there is no test that simulates `codex` binary missing while a `.codex/config.toml` is present"). The `MissingBinary` case directly exercises the absence path; the `BrokenShimFails` case extends it to a hung-or-broken binary — addressing R-13's adjacent risk surface.
+
+### Cycle-2 failure analysis
+
+No failures.
+
+| Test | Error | Root cause | Proposed fix |
+| --- | --- | --- | --- |
+| — | — | — | — |
+
+### Cycle-2 regression checks
+
+| Cycle-1 invariant | Cycle-2 status | Evidence |
+| --- | --- | --- |
+| All 7 cycle-1 added Go tests (`TestExecuteInit_RendersCodexSurfaces`, 5 × `TestCheckCodexEffectiveConfig_*`, `TestTemplateBaseCodexAssetsExist`) | PASS | go-verbose log + targeted run above |
+| `tests/test-check-skill-sync.sh` 6/6 (parity, inventory drift, body drift, description drift, policy drift claude-only-forbid, policy parity both-forbid) | PASS | run-test log |
+| `tests/test-check-mojibake.sh` 11/11 (Edit/Write/MultiEdit clean+dirty payloads, allowlist, jq missing fallback) | PASS | run-test log. Particularly relevant for cycle 2 because `templates/base/.codex/config.toml` now wires the same `.claude/hooks/check_mojibake.sh` script that this suite exercises. |
+| Existing `internal/scaffold::TestTemplateBaseCodexAssetsExist` (`.codex/` + `.agents/skills/` go:embed coverage) | PASS | go-verbose log |
+| Existing `internal/upgrade/` hash-based diff engine (rename surfaces as add+remove) | PASS — 35+ `TestComputeDiffs_*` / `TestUnifiedDiff_*` cases | go-verbose log, package `ok 3.038s` |
+| `./scripts/run-verify.sh` (auto-invoked by `run-test.sh`) | exit 0 — "All verifiers passed." | run-test log; `docs/evidence/verify-2026-05-07-100810.log` |
+
+### Cycle-2 skipped / deferred tests
+
+| Test | Reason | Where it is tracked |
+| --- | --- | --- |
+| `internal/scaffold::TestBaseFS_WithMockFS` | Pre-existing skip — exercises a mock FS path not part of production embed flow. Not introduced by cycle 1 or 2. | Skip reason in `internal/scaffold/embed_test.go:12-27`. |
+| `internal/scaffold::TestAvailablePacks_WithMockFS` | Same as above. | Skip reason in `internal/scaffold/embed_test.go:29-49`. |
+| Live Codex CLI smoke test (`$spec` → `$plan` → `$work` → post-impl pipeline → `$pr`) | Plan calls this out as manual sign-off (Slice 7, AC-2). Cycle-2 changes do not affect Codex flow surface — the cycle-2 fixes are doctor / hook-config robustness, not driver-side. | `docs/reports/walkthrough-2026-05-07-codex-cli-parity.md`; R-8 in plan. Carried over from cycle 1. |
+| `tests/upgrade_downgrade_test.go` | Proposed in plan (Slice 7), still not landed. Cycle-2 did not address this. | Test gap #2 below; R-7 in plan. Carried over from cycle 1. |
+
+### Cycle-2 test gaps
+
+1. **Cycle-1 gaps #1, #2, #3 unchanged.** Live Codex smoke deferred (#1), upgrade round-trip fixture missing (#2), no instrumented coverage numbers (#3) — none of these were in cycle-2 scope.
+2. **Cycle-1 gap #4 (Codex CLI absence path) — closed.** The two new `TestProbeBinary_*` cases now cover both the `LookPath`-fails branch and the binary-exists-but-broken branch. The cycle-2 `probeBinary` timeout (5s `context.WithTimeout`) is exercised structurally by `TestProbeBinary_BrokenShimFails` (the broken shim returns immediately, but the timeout path is now in the code under test).
+3. **New cycle-2 gap (low priority)**: there is no Go test that asserts `probeBinary` cancels when its timeout fires (i.e., a binary that hangs > 5 s). The current tests cover the success and immediate-failure shapes but do not exercise the timeout boundary itself. This is acceptable for cycle-2 — the timeout is a defensive measure against environmental hangs and writing a 5+ s test for it is poor cost/value at this stage. Recommend a `t.Skip` placeholder or follow-up if a CI runner ever encounters a slow-CLI hang in practice.
+4. **Hook-path-existence regression coverage gap**. Cycle-2 fixed two CRITICAL hook-path bugs in `templates/base/.codex/config.toml` (the Edit/Write hooks pointed at non-existent `./scripts/check_mojibake.sh`). There is no automated test that asserts every `command = ["..."]` path in `templates/base/.codex/config.toml` actually exists on disk in the shipped scaffold. The same gap exists for `templates/base/.claude/settings.json`'s `hooks[*].command` paths under Codex (`internal/cli/doctor.go::checkHooks` only walks the Claude side). This is recorded in `docs/tech-debt/README.md` as the "checkHooks only walks .claude/settings.json paths" row and is the right next deterministic check to add — it would have caught both cycle-2 CRITICALs at PR time. Not a cycle-2 fail condition because the underlying bugs are fixed.
+
+### Cycle-2 verdict
+
+- **Pass: yes.** All gated suites green: 11 mojibake + 6 skill-sync + 222 Go top-level (323 incl. subtests). 0 failures, 2 pre-existing Go skips. The 8 specifically requested cases (`TestProbeBinary_BrokenShimFails`, `TestProbeBinary_MissingBinary`, 5 × `TestCheckCodexEffectiveConfig_*`, `TestExecuteInit_RendersCodexSurfaces`) all PASS under cycle-2 source.
+- **Fail: no.**
+- **Blocked: no.**
+- **Cap status: reached.** This is cycle 2/2; no further automatic re-run.
+- **Recommendation:** proceed to `/sync-docs` (the verify report flagged one stale `docs/tech-debt/README.md` row about `probeBinary` timeout that was already struck in the latest diff — confirm it lands) → `/pr`. Cycle-2 closed cycle-1 test gap #4 and added two specific regression guards for the doctor probe path. Gaps #1–#3 from cycle 1 remain known and are out-of-scope per plan; the new gap #4 (hook-path on-disk existence check) is the right next thing to add but does not block this merge.

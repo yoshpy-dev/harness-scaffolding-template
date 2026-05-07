@@ -86,3 +86,76 @@
 - **Not verified**: AC-2 end-to-end (Codex live smoke `$spec → … → $pr`) and the deferred `tests/upgrade_downgrade_test.go`. Both are documented gaps with a defined manual or follow-up handoff path; neither blocks `/verify` from passing.
 
 **Pass.** No fail-condition AC, no static-analysis regression, no doc drift outside the AC-9 allowlist. The smallest single check that would most increase confidence is the manual Codex smoke run (10–15 minutes, recipe in the walkthrough): it is the only behavioural confirmation still outstanding for AC-2 and AC-5 (Codex driver path) before merge, and the deterministic gates in this branch already exercise every codified contract that surrounds it.
+
+---
+
+## Cycle 2 (cap-reached) re-verify
+
+- Date: 2026-05-07
+- Cycle: 2/2 — `RALPH_STANDARD_MAX_PIPELINE_CYCLES=2`. Cap is reached after this run.
+- Verifier: `verifier` subagent (Claude Opus 4.7, 1M context)
+- Scope: cycle-2 delta only — commits `3abd1d7` (cross-review ACTION_REQUIRED — `probeBinary`, default Codex hooks, bidirectional triage template) and `79d7a73` (self-review CRITICAL fix — repair broken hook paths/contracts, add `probeBinary` timeout / first-line / symmetric error). Cycle-1 ACs already verified above are spot-checked, not re-litigated.
+- Evidence: `docs/evidence/verify-2026-05-07-100406.log` (full `run-verify.sh` rerun)
+
+### Cycle-2 spec compliance — full AC sweep
+
+| AC | Status | Cycle-2 evidence |
+| --- | --- | --- |
+| **AC-1** scaffold layout | Verified | Unchanged from cycle 1. `templates/base/.codex/config.toml` updated by `79d7a73` (hook contents) but file/path layout unchanged. `TestExecuteInit_RendersCodexSurfaces` re-runs PASS (manifest still tracks `.codex/config.toml`, `.agents/skills/spec/SKILL.md`, etc.). |
+| **AC-1b** `ralph doctor` effective config probe | Verified, hardened | Two cycle-2 improvements: (a) `probeBinary` (now used by `checkClaudeCLI` / `checkCodexCLI`) wraps `LookPath` errors symmetrically, applies a 5s `context.WithTimeout`, and returns the first non-empty line of `--version`. (b) `checkCodexEffectiveConfig` semantics unchanged; now reports `pass — codex_hooks=true, 2 hook entry(ies). Confirm 'codex trust .' ran for this project` against the cycle-2 default-on hooks. New tests: `TestProbeBinary_BrokenShimFails`, `TestProbeBinary_MissingBinary`. Pre-existing `TestCheckCodexEffectiveConfig_*` (5 cases) still PASS. Live `go run ./cmd/ralph doctor` from repo root: pass-line is `Claude Code CLI: pass — 2.1.132 (Claude Code)` and `Codex CLI: pass — codex-cli 0.128.0`, confirming the version string surfaces correctly. |
+| **AC-2** Codex full standard flow | Likely but unverified at runtime | Cycle-2 changes do not affect Codex flow surface. Live smoke still deferred. |
+| **AC-3** `check-skill-sync.sh` drift gate | Verified | `./scripts/check-skill-sync.sh` exits 0; "13 skill(s) in lock-step". `tests/test-check-skill-sync.sh` 6/6 PASS in `run-verify.sh` rerun. |
+| **AC-4** post-impl pipeline parity Codex=sequential inline | Verified | Unchanged from cycle 1. |
+| **AC-5** `/cross-review` bidirectionality | Verified for `/work`; intentionally partial in Loop scripts | Unchanged from cycle 1. The `82679f1` signpost block at `scripts/ralph-pipeline.sh:716-726` still in place. |
+| **AC-6** `ralph doctor` dual-CLI detection | Verified, hardened | Now goes beyond `LookPath` to actually run `--version`, with a 5s timeout. Both `checkClaudeCLI` and `checkCodexCLI` honour the `Require*` config flags (default false → warn-only). |
+| **AC-7** `run-verify.sh` green + AGENTS.md ≤32 KiB | Verified | `./scripts/run-verify.sh` exit 0 in this rerun (evidence `docs/evidence/verify-2026-05-07-100406.log`). AGENTS.md sizes unchanged from cycle 1 (5286 / 4973 bytes). |
+| **AC-8** Tests for `.codex/` + `.agents/skills/` go:embed and `ralph init` | Verified | Cycle-2 adds two new tests (`TestProbeBinary_*`); existing `TestExecuteInit_RendersCodexSurfaces` and `TestTemplateBaseCodexAssetsExist` re-run PASS. |
+| **AC-9** Rename ripple grep clean against allowlist | Verified | `grep -rn "codex-review\|codex-triage"` across `*.sh / *.go / *.toml / *.json / *.yaml / *.yml` shows only: (a) `.claude/settings.local.json` (gitignored, local-only — confirmed in `.gitignore:15`, not shipped), and (b) `scripts/check-sync.sh:71` (the allowlist literal itself). All Markdown hits are inside the AC-9 allowlist (specs/plans/recipes/historical reports). No new residue introduced by cycle-2 commits. |
+
+### Cycle-2 static analysis
+
+| Command | Result | Notes |
+| --- | --- | --- |
+| `./scripts/run-verify.sh` (rerun this cycle) | exit 0 | "All verifiers passed." Evidence `docs/evidence/verify-2026-05-07-100406.log`. |
+| `./scripts/check-skill-sync.sh` | exit 0 | 13 skill(s) in lock-step. |
+| `./scripts/check-pipeline-sync.sh` | exit 0 | All 5 canonical-order consumers green. |
+| `./scripts/check-sync.sh` | exit 0 | 139 IDENTICAL, 0 DRIFTED, 0 ROOT_ONLY, 14 TEMPLATE_ONLY, 3 KNOWN_DIFF. |
+| `gofmt -l .` (root, Go files) | exit 0 | No diff in `internal/cli/doctor.go` or any cycle-2-touched Go file. |
+| `go vet ./internal/cli/` | exit 0 | Clean. |
+| `golangci-lint run` | exit 0 | (via `run-verify.sh`) — 0 issues. |
+| `go test ./internal/cli/ -run "TestProbeBinary\|TestCheckCodex\|TestExecuteInit_RendersCodexSurfaces" -v` | PASS (8 / 8) | `TestProbeBinary_BrokenShimFails`, `TestProbeBinary_MissingBinary`, 5 `TestCheckCodexEffectiveConfig_*` cases, `TestExecuteInit_RendersCodexSurfaces`. |
+| `python3 -c 'import tomllib; tomllib.loads(open("templates/base/.codex/config.toml").read())'` | OK | Cycle-2 TOML edit parses cleanly. |
+| `tests/test-check-mojibake.sh` (11 fixtures) | 11 PASS / 0 FAIL | Pre-existing battery; the new Codex hooks reuse `.claude/hooks/check_mojibake.sh`, the same script this battery exercises. |
+
+### Cycle-2 documentation drift
+
+| Surface | In sync? | Notes |
+| --- | --- | --- |
+| `templates/base/.codex/config.toml` (cycle-2 comments) | Yes | The new comment block at lines 64-68 ("Reuses the same script the Claude-side hook calls (.claude/hooks/check_mojibake.sh)…") accurately describes the active wiring after `79d7a73`. The `Note:` block at lines 77-81 explains why no `^git commit` PostToolUse hook ships. Both comments are load-bearing — they explain the cycle-1 trap to a future maintainer reading the file alone. |
+| `internal/cli/doctor.go` `probeBinary` docstring | Yes | The docstring at lines 111-120 was extended in `79d7a73` to document the 5s timeout and the first-non-empty-line return contract. Matches behaviour. |
+| Plan progress checklist | Stale (informational) | The four post-impl checkboxes (Self-review/Verify/Test/PR) remain unchecked in `docs/plans/active/2026-05-07-codex-cli-parity.md:302-305`. Standard in-flight pattern; not a fail condition. (Carried over from cycle 1.) |
+| `docs/tech-debt/README.md` | In sync | `79d7a73` appended two new debt rows: "ralph doctor's `checkHooks` only walks `.claude/settings.json` paths…" and "`probeBinary` in `internal/cli/doctor.go` runs `<bin> --version` with no timeout via `exec.Command(...).CombinedOutput()`". The second row is now stale because `79d7a73` itself added the timeout — see "Cycle-2 stale tech-debt note" below. |
+
+### Resolution of cycle-2 self-review CRITICALs
+
+| Cycle-2 CRITICAL finding | Disposition in `79d7a73` | Verified |
+| --- | --- | --- |
+| Edit/Write hooks point at non-existent `./scripts/check_mojibake.sh` | Repointed to `./.claude/hooks/check_mojibake.sh` (real file: `ls -la` returns 3.4k, executable, both at root and in `templates/base/`). Comment block at lines 64-68 documents the "share with Claude-side hook" rationale. | Yes — `grep -n "command = " templates/base/.codex/config.toml` shows only `./.claude/hooks/check_mojibake.sh` for both Edit and Write entries. No `./scripts/check_mojibake.sh` in any shipped config. |
+| `^git commit` PostToolUse wiring of `commit-msg-guard.sh` (wrong script class) | Removed entirely. Replaced by a 4-line `# Note:` comment block at lines 77-81 explaining why this guard belongs in `.git/hooks/commit-msg`, not in `[hooks.PostToolUse]`. | Yes — `grep -n "^git commit\|scripts/commit-msg-guard" templates/base/.codex/config.toml` returns hits only inside the explanatory comment block, no active `[[hooks.PostToolUse]]` entry references it. |
+
+Both cycle-2 CRITICAL hook-path bugs are resolved by configuration change (no script moves required). The fix is minimal and grep-able.
+
+### Cycle-2 stale tech-debt note
+
+The cycle-2 self-review tech-debt entry "`probeBinary` has no timeout" was added in the same commit (`79d7a73`) that *also* added the timeout. The debt row in `docs/tech-debt/README.md` now describes a problem that no longer exists. This is a low-impact documentation drift — recommend striking that row in a follow-up doc-only commit. Not a /verify fail condition because the underlying code is correct.
+
+The other new debt row ("`checkHooks` only walks `.claude/settings.json`; no equivalent for `.codex/config.toml`") remains accurate and load-bearing — `checkHooks` was not extended in `79d7a73`.
+
+### Cycle-2 verdict
+
+- **Verified**: AC-1 (cycle-2 hook content edit does not break scaffold layout), AC-1b (now hardened via `probeBinary` timeout + first-line trim), AC-3, AC-4, AC-6 (now exercises `--version` rather than `LookPath`-only), AC-7 (run-verify.sh exit 0 again), AC-8 (new tests pass), AC-9 (no new residue). Two cycle-2 self-review CRITICALs resolved.
+- **Partially verified**: AC-5 in Loop pipeline — unchanged from cycle 1 (intentional, signposted at `scripts/ralph-pipeline.sh:716-726`).
+- **Not verified**: AC-2 end-to-end Codex live smoke — unchanged from cycle 1 (recipe in `docs/reports/walkthrough-2026-05-07-codex-cli-parity.md`).
+- **Documentation drift**: one stale `docs/tech-debt/README.md` row about `probeBinary` timeout — fixed by the same commit that added it. Recommend a doc-only follow-up commit to strike the row.
+
+**Pass (cycle 2/2, cap reached).** No AC regressed. The cycle-2 fix commits land both cross-review ACTION_REQUIRED items (probe robustness + bidirectional template) and the self-review CRITICALs (broken hook paths + misapplied commit-msg guard). The smallest additional check that would most increase confidence remains the manual Codex live smoke (AC-2 / AC-5 Codex driver path); no additional deterministic check is needed for cycle-2 specifically.
