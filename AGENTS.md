@@ -65,7 +65,8 @@ Steps 4–9 run via subagents in 標準フロー. In Ralph Loop, they are handle
 - `.claude/hooks/` — deterministic runtime checks
   - `check_mojibake.sh` + `mojibake-allowlist` — temporary U+FFFD detection guard for Claude Code SSE mojibake (remove once upstream Issue #43746 ships)
 - `.agents/skills/` — Codex-side skill bodies (mirrors `.claude/skills/`; kept in lock-step by `scripts/check-skill-sync.sh`)
-- `templates/base/.codex/` — Codex project config shipped to scaffolded projects (`config.toml`, `hooks/`, `AGENTS.override.md`, `README.md`); the meta-repo itself does not vendor `.codex/`
+- `.codex/` — Codex project config for this meta-repo (`config.toml`, `hooks/`, `AGENTS.override.md`, `README.md`); same shape as `templates/base/.codex/` so ralph dogfoods the parity it ships
+- `templates/base/.codex/` — `ralph init` source for the same surface; root `.codex/` and template `.codex/` are kept identical via `scripts/check-sync.sh` (no KNOWN_DIFFS today)
 - `packs/languages/` — language-specific depth (also copied to `templates/packs/` for embedding)
 - `scripts/` — reusable verification and bootstrap scripts (includes legacy `ralph` shell CLI, `ralph-config.sh`, `ralph-pipeline.sh`, `ralph-orchestrator.sh`, `install.sh`, drift gate `check-skill-sync.sh`, Codex availability probe `codex-check.sh`)
 - `docs/recipes/` — hands-on recipes (Codex setup, Ralph Loop, language packs, worktrees)
