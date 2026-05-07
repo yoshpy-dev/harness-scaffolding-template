@@ -90,7 +90,7 @@ After approval, print the run command:
 
 ## After the loop
 
-The orchestrator handles everything autonomously (parallel pipeline per slice → integration merge → **integration pipeline** (`--skip-pr --fix-all`) → unified PR). The integration pipeline runs `ralph-pipeline.sh` on the merged branch following the canonical post-implementation order (`/self-review` → `/verify` → `/test` → `/sync-docs` → `/codex-review`) to catch cross-module issues and fix ALL findings before PR creation. When the user returns:
+The orchestrator handles everything autonomously (parallel pipeline per slice → integration merge → **integration pipeline** (`--skip-pr --fix-all`) → unified PR). The integration pipeline runs `ralph-pipeline.sh` on the merged branch following the canonical post-implementation order (`/self-review` → `/verify` → `/test` → `/sync-docs` → `/cross-review`) to catch cross-module issues and fix ALL findings before PR creation. When the user returns:
 
 1. Run `./scripts/ralph status` to check outcome
 2. Read `.harness/state/orchestrator/orchestrator.json` for final state

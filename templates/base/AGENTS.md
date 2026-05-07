@@ -28,7 +28,7 @@ Build coding-agent workflows that are:
 5. Verify (auto)
 6. Test (auto)
 7. Sync-docs (auto)
-8. Codex-review (auto, optional — cross-model second opinion)
+8. Cross-review (auto, optional — cross-model second opinion via the other CLI: Claude → Codex; Codex → Claude)
 9. PR (auto — includes hand-off)
 10. CI verify + human merge
 

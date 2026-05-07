@@ -12,7 +12,7 @@ Work from the active plan, not from memory alone.
    - If exactly one candidate file exists, use it.
    - If multiple candidate files exist, ask via AskUserQuestion which plan this `/work` run targets, and use the selected path.
    - If none exist, stop and ask the user to run `/plan` first.
-   - Downstream steps in this skill — and downstream skills (`/codex-review`, `/pr`) — MUST use this resolved path instead of rescanning `docs/plans/active/`.
+   - Downstream steps in this skill — and downstream skills (`/cross-review`, `/pr`) — MUST use this resolved path instead of rescanning `docs/plans/active/`.
 2. **Create feature branch** (if not already on one), based on the plan resolved in Step 1:
    a. Read the resolved plan to extract metadata (type, issue number, slug).
    b. Determine branch name: `<type>/<issue>/<slug>` (with issue) or `<type>/<slug>` (without issue).
@@ -45,7 +45,7 @@ Work from the active plan, not from memory alone.
     b. `Task(subagent_type="verifier")` → `/verify` — stop if fail verdict
     c. `Task(subagent_type="tester")` → `/test` — stop if fail verdict
     d. `Task(subagent_type="doc-maintainer")` → `/sync-docs`
-    e. **Invoke `/codex-review` via the Skill tool** (optional, inline — if Codex CLI unavailable, skip to `/pr`). The skill reads `cycle-count.json` and enforces `RALPH_STANDARD_MAX_PIPELINE_CYCLES` (default 2). On re-run after ACTION_REQUIRED fixes, `/codex-review` increments `cycle-count.json`.
+    e. **Invoke `/cross-review` via the Skill tool** (optional, inline — if Codex CLI unavailable, skip to `/pr`). The skill reads `cycle-count.json` and enforces `RALPH_STANDARD_MAX_PIPELINE_CYCLES` (default 2). On re-run after ACTION_REQUIRED fixes, `/cross-review` increments `cycle-count.json`.
     f. **Invoke `/pr` via the Skill tool** — do NOT run `gh pr create` directly. The `/pr` skill enforces the Japanese template, pre-checks, and plan archiving. On success, `/pr` deletes `.harness/state/standard-pipeline/active-plan.json` and `cycle-count.json`.
 
 ## Scope discipline

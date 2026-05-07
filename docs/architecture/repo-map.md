@@ -33,7 +33,7 @@
 - `.claude/skills/self-review/`: self-review diff quality (auto)
 - `.claude/skills/verify/`: spec compliance and static analysis (auto)
 - `.claude/skills/test/`: behavioral tests (auto)
-- `.claude/skills/codex-review/`: cross-model second opinion via Codex (auto, optional)
+- `.claude/skills/cross-review/`: cross-model second opinion via Codex (auto, optional)
 - `.claude/skills/pr/`: create PRs, archive plans, hand off (auto)
 - `.claude/skills/sync-docs/`: documentation sync (auto)
 - `.claude/skills/audit-harness/`: harness consistency audit (auto)

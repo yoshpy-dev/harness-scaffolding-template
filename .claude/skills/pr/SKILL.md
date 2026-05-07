@@ -1,6 +1,6 @@
 ---
 name: pr
-description: Create a pull request after self-review, verify, and test pass. Handles branch push, PR creation, plan archiving, and hand-off. Invoke automatically after /codex-review completes (or is skipped), when self-review, verify, and test reports all exist with passing verdicts.
+description: Create a pull request after self-review, verify, and test pass. Handles branch push, PR creation, plan archiving, and hand-off. Invoke automatically after /cross-review completes (or is skipped), when self-review, verify, and test reports all exist with passing verdicts.
 allowed-tools: Read, Grep, Glob, Bash, Write
 ---
 Create a PR to hand off completed work for human review and merge.

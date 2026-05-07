@@ -74,7 +74,7 @@ In Claude Code, follow the loop:
 ```
 /spec (optional) → /plan → /work (or /loop)
 → /self-review → /verify → /test → /sync-docs
-→ /codex-review (optional) → /pr
+→ /cross-review (optional) → /pr
 ```
 
 Before claiming a task is done:
@@ -87,7 +87,7 @@ Before claiming a task is done:
 
 | | |
 |:---|:---|
-| **Maps, not manuals**<br/>Short `AGENTS.md` / `CLAUDE.md`; push detail into rules and skills, promote repeats into hooks. | **Canonical pipeline**<br/>`self-review → verify → test → sync-docs → codex-review → pr` enforced in standard flow and Ralph Loop. |
+| **Maps, not manuals**<br/>Short `AGENTS.md` / `CLAUDE.md`; push detail into rules and skills, promote repeats into hooks. | **Canonical pipeline**<br/>`self-review → verify → test → sync-docs → cross-review → pr` enforced in standard flow and Ralph Loop. |
 | **Deterministic hooks**<br/>Mojibake guard, commit-msg secret scan, Bash guardrails, verification reminders — pre-wired in `settings.json`. | **Ralph Loop**<br/>Multi-worktree autonomous parallel slices, integration branch, unified PR — orchestrated by `ralph run`. |
 | **Language packs**<br/>TypeScript, Python, Rust, Go, Dart starters (opt-in) with per-language `verify.sh` and path-scoped rules. | **Drift-proof upgrades**<br/>Hash-based `ralph upgrade` with per-file conflict resolution — keeps N projects aligned as the scaffold evolves. |
 | **Evidence over prose**<br/>Every review, verify, test, and codex pass produces a dated artifact in `docs/reports/`. | **Cross-agent portable**<br/>`AGENTS.md` + `scripts/` + `packs/` stay neutral; `.claude/` is the Claude-native layer you can stack others beside. |
@@ -156,7 +156,7 @@ flowchart LR
     E --> F["/verify"]
     F --> G["/test"]
     G --> H["/sync-docs"]
-    H --> I["/codex-review<br/>(optional)"]
+    H --> I["/cross-review<br/>(optional)"]
     I --> J["/pr"]
     J --> K["CI +<br/>human merge"]
 ```
@@ -170,7 +170,7 @@ flowchart LR
 5. **Verify** (auto — `/verify`) — spec compliance + static analysis.
 6. **Test** (auto — `/test`) — behavioral tests must pass before PR.
 7. **Sync docs** (auto — `/sync-docs`) — alignment across AGENTS.md / CLAUDE.md / rules / README.
-8. **Codex review** (auto, optional — `/codex-review`) — cross-model second opinion via Codex CLI; silently skipped if unavailable.
+8. **Codex review** (auto, optional — `/cross-review`) — cross-model second opinion via Codex CLI; silently skipped if unavailable.
 9. **PR** (auto — `/pr`) — structured PR, plan archival, hand-off.
 10. **CI + human merge**.
 
@@ -178,7 +178,7 @@ See `.claude/rules/post-implementation-pipeline.md` for the canonical pipeline o
 
 ## Ralph Loop (autonomous parallel execution)
 
-For large tasks that can be split into independent slices, Ralph Loop runs parallel pipelines across multiple Git worktrees. Each slice handles its own lifecycle autonomously (implement → self-review → verify → test → sync-docs → codex-review). Completed slices are sequentially merged into an integration branch, and a unified PR is created.
+For large tasks that can be split into independent slices, Ralph Loop runs parallel pipelines across multiple Git worktrees. Each slice handles its own lifecycle autonomously (implement → self-review → verify → test → sync-docs → cross-review). Completed slices are sequentially merged into an integration branch, and a unified PR is created.
 
 ```sh
 ./scripts/new-ralph-plan.sh my-feature N/A 3
