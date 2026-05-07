@@ -93,6 +93,36 @@ func TestTemplateBaseScriptsExist(t *testing.T) {
 	}
 }
 
+// TestTemplateBaseCodexAssetsExist enforces the Codex parity contract
+// (docs/specs/2026-05-07-codex-cli-parity.md): every fresh `ralph init`
+// project must ship .codex/{config.toml, AGENTS.override.md, README.md} and
+// the .agents/skills/ tree alongside the existing .claude/ surface. Drift in
+// either tree breaks AC-1, so guard the on-disk template directly rather than
+// relying on go:embed inspection (the embed FS is empty in unit tests).
+func TestTemplateBaseCodexAssetsExist(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot determine test file location")
+	}
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	baseDir := filepath.Join(repoRoot, "templates", "base")
+
+	required := []string{
+		".codex/config.toml",
+		".codex/AGENTS.override.md",
+		".codex/README.md",
+		".codex/hooks/.gitkeep",
+		".agents/skills/.gitkeep",
+	}
+
+	for _, rel := range required {
+		path := filepath.Join(baseDir, rel)
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("required template missing: templates/base/%s (%v)", rel, err)
+		}
+	}
+}
+
 // TestAvailablePacksExcludesTemplate verifies _template is excluded.
 func TestAvailablePacksExcludesTemplate(t *testing.T) {
 	orig := EmbeddedFS

@@ -915,6 +915,119 @@ func TestRunDoctor_Passes(t *testing.T) {
 	_ = runDoctor(dir)
 }
 
+// TestCheckCodexEffectiveConfig_MissingFile asserts that we degrade to a
+// warning (not a fail) when the project has no .codex/config.toml — the
+// .codex/ tree is template-driven, so a missing file just means the user has
+// not run `ralph init` or `ralph upgrade` against this revision yet.
+func TestCheckCodexEffectiveConfig_MissingFile(t *testing.T) {
+	dir := t.TempDir()
+	r := checkCodexEffectiveConfig(dir)
+	if r.Status != "warn" {
+		t.Errorf("status = %q, want warn", r.Status)
+	}
+	if !strings.Contains(r.Detail, "not found") {
+		t.Errorf("detail = %q, want substring 'not found'", r.Detail)
+	}
+}
+
+// TestCheckCodexEffectiveConfig_MissingFeatureFlag_Warns covers the failure
+// mode Codex documents explicitly: project [hooks] are silently ignored unless
+// `[features] codex_hooks = true` is set. Doctor must surface this as a warn
+// even when [hooks] are otherwise wired up.
+func TestCheckCodexEffectiveConfig_MissingFeatureFlag_Warns(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".codex"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	contents := `model = "gpt-5.5"
+
+[hooks]
+[[hooks.PostToolUse]]
+command = ["./scripts/hello.sh"]
+`
+	if err := os.WriteFile(filepath.Join(dir, ".codex", "config.toml"), []byte(contents), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := checkCodexEffectiveConfig(dir)
+	if r.Status != "warn" {
+		t.Errorf("status = %q, want warn", r.Status)
+	}
+	if !strings.Contains(r.Detail, "codex_hooks") {
+		t.Errorf("detail = %q, want substring 'codex_hooks'", r.Detail)
+	}
+}
+
+// TestCheckCodexEffectiveConfig_NoHooks_Warns ensures the check distinguishes
+// "feature flag missing" from "no hooks wired" so the operator gets a precise
+// remediation hint.
+func TestCheckCodexEffectiveConfig_NoHooks_Warns(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".codex"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	contents := `model = "gpt-5.5"
+
+[features]
+codex_hooks = true
+`
+	if err := os.WriteFile(filepath.Join(dir, ".codex", "config.toml"), []byte(contents), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := checkCodexEffectiveConfig(dir)
+	if r.Status != "warn" {
+		t.Errorf("status = %q, want warn", r.Status)
+	}
+	if !strings.Contains(r.Detail, "codex trust") {
+		t.Errorf("detail = %q, want substring 'codex trust'", r.Detail)
+	}
+}
+
+// TestCheckCodexEffectiveConfig_FullyWired exercises the success path: feature
+// flag on AND at least one hook entry. The detail must remind the operator
+// that effective loading still requires `codex trust .` because we cannot
+// probe Codex's trust state from Go.
+func TestCheckCodexEffectiveConfig_FullyWired(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".codex"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	contents := `model = "gpt-5.5"
+
+[features]
+codex_hooks = true
+
+[[hooks.PostToolUse]]
+command = ["./scripts/check_mojibake.sh"]
+`
+	if err := os.WriteFile(filepath.Join(dir, ".codex", "config.toml"), []byte(contents), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := checkCodexEffectiveConfig(dir)
+	if r.Status != "pass" {
+		t.Errorf("status = %q, want pass (detail=%q)", r.Status, r.Detail)
+	}
+	if !strings.Contains(r.Detail, "codex trust") {
+		t.Errorf("detail must mention `codex trust .` reminder, got %q", r.Detail)
+	}
+}
+
+// TestCheckCodexEffectiveConfig_InvalidTOML_Fails proves the doctor surfaces
+// a fail (not warn) when the TOML cannot be parsed — silently warning would
+// hide a configuration error from the operator.
+func TestCheckCodexEffectiveConfig_InvalidTOML_Fails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".codex"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".codex", "config.toml"), []byte("not [valid toml=="), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := checkCodexEffectiveConfig(dir)
+	if r.Status != "fail" {
+		t.Errorf("status = %q, want fail", r.Status)
+	}
+}
+
 // shouldColorize must respect NO_COLOR (any non-empty value disables) and
 // must return false when out is nil or not a terminal. Pipes / regular files
 // (the typical test path) are not terminals.
