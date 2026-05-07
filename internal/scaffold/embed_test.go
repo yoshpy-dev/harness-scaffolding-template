@@ -77,6 +77,7 @@ func TestTemplateBaseScriptsExist(t *testing.T) {
 		"ralph-status-helpers.sh",
 		"commit-msg-guard.sh",
 		"check-template.sh",
+		"check-skill-sync.sh",
 	}
 
 	for _, name := range required {
