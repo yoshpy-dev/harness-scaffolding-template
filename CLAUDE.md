@@ -30,4 +30,4 @@ Use this file only for Claude-specific guidance that must be always-on.
 - `.claude/rules/` for conditional rules (also read by Codex)
 - `.claude/skills/` for on-demand workflows (mirrored to `.agents/skills/` for Codex; drift-checked by `scripts/check-skill-sync.sh`)
 - `.claude/agents/` for specialized subagents (no Codex equivalent)
-- `.claude/hooks/` for deterministic runtime controls (Codex equivalents live under `templates/base/.codex/config.toml` `[hooks]` and ship to scaffolded projects)
+- `.claude/hooks/` for deterministic runtime controls (Codex equivalents live under `.codex/config.toml` `[hooks]` for the meta-repo and `templates/base/.codex/config.toml` for scaffolded projects; the two are kept byte-identical)

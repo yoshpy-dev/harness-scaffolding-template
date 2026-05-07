@@ -121,3 +121,75 @@ Walked the seven surfaces flagged by the parent prompt. For each, compared the o
 The only documentation surface that drifted in cycle 2 was the `templates/base/.codex/README.md` Hooks section (it was still describing the pre-cycle-1 "no default entries — add your own" model). All other surfaces flagged by the parent prompt were already aligned. The cycle-2 implementation changes (`probeBinary` hardening, hook-path repair) are either internal-helper details not exposed in any documented contract, or were correctly anticipated by cycle-1 phrasing.
 
 Recommendation: proceed to `/cross-review` (cycle 2/2 — cap reached after this cycle per `RALPH_STANDARD_MAX_PIPELINE_CYCLES=2`). No further documentation-driven follow-up work is required for the merge.
+
+---
+
+## Cycle 3 / Post-PR (2026-05-07)
+
+PR #45 is already created. Cycle-2 cross-review triage (`docs/reports/cross-review-triage-2026-05-07-codex-cli-parity.md`) marked the cap reached and recommended proceeding to `/pr`. After the cap, two follow-up commits landed on the branch:
+
+- `dbaeb30` — `feat: vendor .codex/ at the meta-repo root for dogfood parity`. Added `.codex/{config.toml, AGENTS.override.md, README.md, hooks/.gitkeep}` byte-identical to `templates/base/.codex/`. Updated the root `AGENTS.md` repo map to list both `.codex/` (root) and `templates/base/.codex/` (template) and to call out the parity check explicitly. Drops the `check-sync.sh` TEMPLATE_ONLY count from 14 → 10.
+- `4bb0b87` — `chore: archive Codex CLI parity plan after PR #45 hand-off`. Moved `docs/plans/active/2026-05-07-codex-cli-parity.md` → `docs/plans/archive/`.
+
+Plus a user-edited surface in this session: `templates/base/.codex/README.md` "Hooks" section was rewritten to lead with the default-on mojibake hooks and to warn off the `commit-msg-guard.sh` `^git commit` PostToolUse trap. The same edit must hold for the root `.codex/README.md` (since the two are required byte-identical by `check-sync.sh`).
+
+### Cycle-3 method
+
+Walked the surfaces flagged by the parent prompt:
+1. AGENTS.md (root + template) repo map for new dual `.codex/` entries
+2. `docs/architecture/repo-map.md` Codex control plane section
+3. `README.md` "What `ralph init` scaffolds" tree
+4. `docs/recipes/codex-setup.md` (root + template) hook reality
+5. `docs/quality/{definition-of-done,quality-gates}.md` for `check-skill-sync.sh` as CI gate
+6. `.claude/rules/{post-implementation-pipeline,subagent-policy}.md` for `/cross-review` consistency
+7. Sweep for `codex-review` outside the AC-9 allowlist
+8. Confirm root `.codex/README.md` matches the new template wording
+
+For each, compared the on-disk doc against the actual repo state (newly-vendored `.codex/`, archived plan, current `check-sync.sh` summary, current Hooks section). No documentation was rewritten or invented.
+
+### Updated in cycle 3
+
+| File | What drifted | Fix applied |
+| --- | --- | --- |
+| `docs/architecture/repo-map.md` Codex control plane | Said `templates/base/.codex/` is shipped to scaffolded projects "the meta-repo itself does not vendor a `.codex/` directory". Outdated as of `dbaeb30`. | Replaced with two lines: `.codex/` for the meta-repo (same shape as the template, dogfood) + `templates/base/.codex/` as the `ralph init` source (kept byte-identical, validated by `scripts/check-sync.sh`). Mirrors the wording already in `AGENTS.md`. |
+| `CLAUDE.md` (root) Claude-specific directories | Said "Codex equivalents live under `templates/base/.codex/config.toml` `[hooks]` and ship to scaffolded projects". The meta-repo now also vendors the surface at root, and the equivalents exist at both places. | Changed to "Codex equivalents live under `.codex/config.toml` `[hooks]` for the meta-repo and `templates/base/.codex/config.toml` for scaffolded projects; the two are kept byte-identical". |
+
+### Confirmed already-aligned in cycle 3
+
+| File | Why it is in sync (no edit needed) |
+| --- | --- |
+| `AGENTS.md` (root) repo map | `dbaeb30` already added the dual-entry block at lines 68–69: root `.codex/` ("dogfoods the parity it ships") + `templates/base/.codex/` ("kept identical via `scripts/check-sync.sh`"). No contradictions. |
+| `templates/base/AGENTS.md` repo map | Lists `.codex/` and `.agents/skills/` from the perspective of a scaffolded project (no meta-repo references — correctly). The template repo map is project-flat by design. |
+| `README.md` "What `ralph init` scaffolds" tree (lines 132–165) | Tree shows `.codex/{config.toml, hooks/, AGENTS.override.md, README.md}` and `.agents/skills/`. This is what `ralph init` produces; root `.codex/` in the meta-repo is dogfood and does not change scaffolded output. Tree is still accurate. |
+| `README.md` Portability section (lines 240–262) | Lists `.codex/config.toml`, `.codex/hooks/`, `.codex/AGENTS.override.md`, `.codex/README.md` as Codex-native surfaces. True for both the meta-repo and scaffolded projects after `dbaeb30`. |
+| `README.md` source-tree details (lines 287–311) | Shows `templates/`, `cmd/`, `internal/`, `scripts/`, etc. Does not enumerate root `.codex/` — and that is fine because the source tree section is high-level and the dual-`.codex/` parity is already covered by `AGENTS.md` and `repo-map.md`. |
+| `docs/recipes/codex-setup.md` (root + template) | `diff -u root template` empty. Hook wording: "no `[hooks]` entries are visible" warning text remains correct (doctor still warns if a user strips the default-on hooks). The recipe does not enumerate the specific default entries, so the cycle-2 hook script-path repair is invisible at recipe level. No drift. |
+| `templates/base/.codex/README.md` and root `.codex/README.md` | `diff -r .codex/ templates/base/.codex/` empty (verified). The user-edited Hooks section is consistent at both places: leads with default-on `PostToolUse` mojibake hooks pointing at `./.claude/hooks/check_mojibake.sh`, and explicitly warns that `scripts/commit-msg-guard.sh` is a git `commit-msg` hook (consumes `$1`) — not a Codex `PostToolUse` hook. |
+| `templates/base/.codex/AGENTS.override.md` and root `.codex/AGENTS.override.md` | Byte-identical (verified). Permission/sandbox table, skill-invocation rules, "What Codex must not do" list — all unchanged from cycle-2 and still correct. |
+| `templates/base/.codex/config.toml` and root `.codex/config.toml` | Byte-identical (verified). The two `[[hooks.PostToolUse]]` mojibake entries point at `./.claude/hooks/check_mojibake.sh`, which exists at both `templates/base/.claude/hooks/check_mojibake.sh` and the root `.claude/hooks/check_mojibake.sh`. |
+| `docs/quality/definition-of-done.md` | Already includes `check-skill-sync.sh` as a checklist item ("Skill drift check (`./scripts/check-skill-sync.sh`) is green so `.claude/skills/` and `.agents/skills/` stay in lock-step") and the parity-related "both CLIs were exercised" item. No drift. |
+| `docs/quality/quality-gates.md` | Already lists `check-skill-sync.sh` under "Must pass in CI before merge". `check-sync.sh` (templates/root parity) is also listed. No drift. |
+| `.claude/rules/post-implementation-pipeline.md` (root + template) | `/cross-review` referenced consistently in the canonical order, CLI execution mode table, step-responsibilities table, re-run prose, and the "Where this order is referenced" list. Identical pattern in template. |
+| `.claude/rules/subagent-policy.md` (root + template) | `/cross-review` referenced as inline at step 5 ("After step 4, `/cross-review` runs inline (optional), then `/pr`"). Codex triage section produces `cross-review-triage-<slug>.md`. Identical pattern in template. |
+| Active plans directory | Empty after `4bb0b87` (only `.gitkeep` remains). Plan correctly archived to `docs/plans/archive/2026-05-07-codex-cli-parity.md`. |
+| `docs/architecture/repo-map.md` Process artifacts list | Already lists `docs/recipes/`, `docs/quality/`, `docs/reports/`, `docs/tech-debt/`, `docs/plans/{active,archive}/`. No drift from `4bb0b87` (archive move is automatically reflected — the path is the same). |
+
+### Cycle-3 cross-references verified
+
+- `diff -r .codex/ templates/base/.codex/` returns empty (root and template byte-identical, all four files plus `hooks/.gitkeep`).
+- `./scripts/check-sync.sh` final summary: `IDENTICAL: 143  DRIFTED: 0  ROOT_ONLY: 0  TEMPLATE_ONLY: 10  KNOWN_DIFF: 3` → `PASS: all files in sync`. The TEMPLATE_ONLY 14→10 drop matches the commit message in `dbaeb30`.
+- `grep -rln "meta-repo does not vendor\|meta-repo itself does not vendor\|does not vendor.*\.codex"` over the repo: zero hits after the cycle-3 edit (was 1 hit in `docs/architecture/repo-map.md:20` before).
+- `grep -rn "codex-review"` over `AGENTS.md`, `CLAUDE.md`, `README.md`, `docs/architecture/`, `docs/quality/`, `.claude/rules/`, `.claude/skills/`, `.agents/skills/`, `templates/base/`: only hits are inside the AC-9 allowlist (the rename-history note in `docs/recipes/codex-setup.md` and its template mirror at lines 83 and 88). No fresh residue.
+- `grep -rn "/cross-review\|cross-review"` over `.claude/rules/post-implementation-pipeline.md` and `.claude/rules/subagent-policy.md`: 11 hits, all consistent with the post-rename canonical form.
+- `ls docs/plans/active/`: only `.gitkeep` remains (the parity plan correctly moved to archive in `4bb0b87`).
+
+### Cycle-3 verdict
+
+**Drift found and fixed: 2 surfaces** — both were narrow textual updates to bring the documentation into alignment with `dbaeb30` (root `.codex/` now exists, byte-identical to the template).
+
+1. `docs/architecture/repo-map.md` Codex control plane section: replaced the "the meta-repo itself does not vendor a `.codex/` directory" line with the new dual-entry block.
+2. `CLAUDE.md` (root) Claude-specific directories: updated the Codex equivalents pointer to name both root `.codex/` (meta-repo) and `templates/base/.codex/` (scaffolded projects).
+
+Everything else flagged by the parent prompt was already aligned — `dbaeb30` correctly updated `AGENTS.md`, the README scaffold tree is unaffected (root `.codex/` is meta-repo only), the recipes file is in lock-step, the quality docs already gate on `check-skill-sync.sh`, and the cross-review skill name is consistent everywhere outside the rename-history allowlist. `check-sync.sh` confirms the four root `.codex/` files are byte-identical to their template counterparts.
+
+Recommendation: push the cycle-3 sync-docs commit to PR #45. No `/cross-review` regression is needed: the cap is already exhausted (cycle 2/2), and cycle-3 only updates documentation surfaces — no behavior, no tests, no shipped binary changed. The PR description and pre-checks remain valid.
