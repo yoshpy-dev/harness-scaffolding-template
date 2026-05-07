@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
@@ -105,37 +106,56 @@ func countFailed(results []checkResult) int {
 	return n
 }
 
+// probeBinary runs `<bin> --version` to confirm the binary on PATH is actually
+// callable. A bare exec.LookPath success is not enough — stale or broken
+// shims (npm-installed CLIs that lost their entry script, version managers
+// pointing at a removed install) appear on PATH but blow up at runtime,
+// which lets `ralph doctor` report `pass` while every subsequent /work or
+// /cross-review fails.
+func probeBinary(bin string) (version string, err error) {
+	if _, lookErr := exec.LookPath(bin); lookErr != nil {
+		return "", lookErr
+	}
+	out, runErr := exec.Command(bin, "--version").CombinedOutput()
+	if runErr != nil {
+		return "", fmt.Errorf("%s --version failed: %w", bin, runErr)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func checkClaudeCLI(cfg config.Config) checkResult {
 	r := checkResult{Name: "Claude Code CLI"}
-	_, err := exec.LookPath("claude")
+	version, err := probeBinary("claude")
 	if err != nil {
 		if cfg.Doctor.RequireClaudeCLI {
 			r.Status = "fail"
-			r.Detail = "claude not found in PATH"
+			r.Detail = fmt.Sprintf("claude unusable: %v", err)
 		} else {
 			r.Status = "warn"
-			r.Detail = "claude not found (not required)"
+			r.Detail = fmt.Sprintf("claude unusable (not required): %v", err)
 		}
-	} else {
-		r.Status = "pass"
+		return r
 	}
+	r.Status = "pass"
+	r.Detail = version
 	return r
 }
 
 func checkCodexCLI(cfg config.Config) checkResult {
 	r := checkResult{Name: "Codex CLI"}
-	_, err := exec.LookPath("codex")
+	version, err := probeBinary("codex")
 	if err != nil {
 		if cfg.Doctor.RequireCodexCLI {
 			r.Status = "fail"
-			r.Detail = "codex not found in PATH"
+			r.Detail = fmt.Sprintf("codex unusable: %v", err)
 		} else {
 			r.Status = "warn"
-			r.Detail = "codex not found (not required)"
+			r.Detail = fmt.Sprintf("codex unusable (not required): %v", err)
 		}
 		return r
 	}
 	r.Status = "pass"
+	r.Detail = version
 	return r
 }
 

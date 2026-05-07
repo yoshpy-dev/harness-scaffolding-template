@@ -971,6 +971,39 @@ func TestRunDoctor_Passes(t *testing.T) {
 	_ = runDoctor(dir)
 }
 
+// TestProbeBinary_BrokenShimFails covers the codex-cross-review finding that
+// `LookPath("codex")` is not enough — a broken shim on PATH lets `ralph
+// doctor` falsely report `pass` while every subsequent /work or /cross-review
+// invocation crashes. probeBinary must run `<bin> --version` and surface the
+// failure so doctor can warn or fail.
+func TestProbeBinary_BrokenShimFails(t *testing.T) {
+	dir := t.TempDir()
+	shim := filepath.Join(dir, "claude")
+	// Shim that exits non-zero on any invocation, simulating a stale entry
+	// script that lost its target.
+	if err := os.WriteFile(shim, []byte("#!/bin/sh\necho 'shim broken' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Point PATH at this directory only so the probe finds the shim.
+	t.Setenv("PATH", dir)
+
+	if _, err := probeBinary("claude"); err == nil {
+		t.Fatal("probeBinary returned nil error for a broken shim — should have surfaced --version failure")
+	}
+}
+
+// TestProbeBinary_MissingBinary distinguishes "not on PATH" from "shim
+// broken". Both should be errors but for different reasons; the test pins the
+// LookPath branch so a future refactor cannot silently swallow it.
+func TestProbeBinary_MissingBinary(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+
+	if _, err := probeBinary("claude"); err == nil {
+		t.Fatal("probeBinary returned nil error for missing binary")
+	}
+}
+
 // TestCheckCodexEffectiveConfig_MissingFile asserts that we degrade to a
 // warning (not a fail) when the project has no .codex/config.toml — the
 // .codex/ tree is template-driven, so a missing file just means the user has
