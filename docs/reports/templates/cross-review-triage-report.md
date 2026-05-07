@@ -1,11 +1,11 @@
-# Codex triage report: __TITLE__
+# Cross-review triage report: __TITLE__
 
 - Date:
 - Plan:
 - Base branch:
 - Triager: Claude Code (main context)
 - Self-review cross-ref: yes/no
-- Total Codex findings: N
+- Total reviewer findings: N
 - After triage: ACTION_REQUIRED=X, WORTH_CONSIDERING=Y, DISMISSED=Z
 
 ## Triage context
