@@ -12,6 +12,24 @@ No step may be skipped. If any step triggers a fix-and-revalidate cycle (e.g., C
 
 **Pipeline parity:** In Ralph Loop (`ralph-pipeline.sh`), each post-implementation step runs as a dedicated `claude -p` agent with a single-responsibility prompt (not shell-direct execution). This ensures the same depth of analysis as standard-flow subagents: structured reports with findings tables, root cause analysis, spec compliance checks, and documentation drift detection. Reports are dual-written to both `.harness/state/pipeline/` and `docs/reports/`.
 
+### CLI execution mode
+
+Both Claude Code and Codex run the same canonical order, but the execution
+model differs:
+
+| Step | Claude Code (`/work`) | Codex |
+|------|------------------------|-------|
+| `/self-review` | `Task(subagent_type="reviewer")` parallel-capable | sequential inline in the single agent |
+| `/verify` | `Task(subagent_type="verifier")` | sequential inline |
+| `/test` | `Task(subagent_type="tester")` | sequential inline |
+| `/sync-docs` | `Task(subagent_type="doc-maintainer")` | sequential inline |
+| `/cross-review` | inline; calls `codex exec review` | inline; calls `claude -p` reviewer prompt |
+| `/pr` | inline | inline |
+
+Reports go to `docs/reports/` (CLI-neutral path) so the pipeline cycle counter
+and PR pre-checks behave identically. The driver detection used by
+`/cross-review` is documented in `.claude/skills/cross-review/SKILL.md`.
+
 ## Step responsibilities
 
 | Step | Agent | Purpose | Stop condition |

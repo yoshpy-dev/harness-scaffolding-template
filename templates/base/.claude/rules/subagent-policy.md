@@ -49,6 +49,18 @@ If a subagent fails to execute (tool error, not a review finding), run the corre
 
 The triage step reads existing artifacts (plan, self-review report, verify report) and produces `docs/reports/cross-review-triage-<slug>.md`. No new subagent definition is needed.
 
+## Post-implementation pipeline under Codex — sequential inline
+
+Codex CLI does not have a subagent (`Task`) mechanism. When ralph runs under
+Codex (`RALPH_PRIMARY_CLI=codex` or detected at runtime), the four
+post-implementation skills run **sequentially inline in the single agent**:
+the agent walks the canonical order step-by-step, writing the same reports to
+`docs/reports/` that the Claude subagent path produces. This keeps artifact
+parity for `/cross-review` triage, the cycle cap, and `/pr`.
+
+Cap protection: the same `RALPH_STANDARD_MAX_PIPELINE_CYCLES` ceiling applies,
+so a runaway inline pipeline cannot loop more than `cap` total runs.
+
 ## Post-implementation pipeline for /loop — orchestrator-internal
 
 Ralph Loop uses `ralph-pipeline.sh` per slice (not subagents). Same pipeline order as `/work` (see `post-implementation-pipeline.md`), but executed via `claude -p` calls with dedicated prompts.

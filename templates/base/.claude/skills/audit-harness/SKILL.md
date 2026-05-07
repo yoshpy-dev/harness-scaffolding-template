@@ -11,9 +11,32 @@ Audit the harness, not the product code alone.
 - `.claude/rules/`
 - `.claude/skills/` (including `/test` skill)
 - `.claude/hooks/`
-- `scripts/run-verify.sh`, `scripts/run-static-verify.sh`, `scripts/run-test.sh`
+- `.codex/config.toml`, `.codex/AGENTS.override.md`, `.codex/README.md`, `.codex/hooks/`
+- `.agents/skills/` (Codex skill mirrors)
+- `scripts/run-verify.sh`, `scripts/run-static-verify.sh`, `scripts/run-test.sh`, `scripts/check-skill-sync.sh`
 - `packs/languages/`
 - CI and report templates
+
+## AGENTS.md size budget
+
+Codex caps the merged AGENTS.md prompt at `project_doc_max_bytes`
+(default **32 KiB**, see [config-reference](https://developers.openai.com/codex/config-reference)).
+Anything beyond that is silently truncated, which strips the bottom of the
+file with no warning. Run during the audit:
+
+```sh
+size="$(wc -c < AGENTS.md)"
+if [ "$size" -gt 24576 ]; then
+  echo "WARN: AGENTS.md=${size} bytes (>24 KiB)"
+fi
+if [ "$size" -gt 32768 ]; then
+  echo "FAIL: AGENTS.md=${size} bytes (>32 KiB Codex cap)"
+fi
+```
+
+Promote anything that crosses the warning threshold into `.claude/rules/`,
+`.claude/skills/`, or `.codex/AGENTS.override.md` instead of bloating the
+shared map. Record the size and remediation in the audit memo.
 
 ## Questions
 

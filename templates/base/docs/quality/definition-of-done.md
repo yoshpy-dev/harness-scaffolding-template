@@ -14,6 +14,8 @@ A task is done only when all applicable items are satisfied.
 - [ ] Remaining gaps are explicit
 - [ ] PR created via `/pr` skill (includes plan archival and hand-off)
 - [ ] CI verify passes on the PR
+- [ ] Skill drift check (`./scripts/check-skill-sync.sh`) is green so `.claude/skills/` and `.agents/skills/` stay in lock-step
+- [ ] If the change touches `.claude/`, `.codex/`, `.agents/skills/`, or shared rules, both CLIs were exercised (or the gap is recorded explicitly)
 
 ### Post-implementation pipeline order
 
