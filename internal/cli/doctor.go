@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
@@ -112,15 +114,29 @@ func countFailed(results []checkResult) int {
 // pointing at a removed install) appear on PATH but blow up at runtime,
 // which lets `ralph doctor` report `pass` while every subsequent /work or
 // /cross-review fails.
+//
+// Bounded by a 5-second timeout so a hung CLI cannot wedge `ralph doctor`.
+// Returns the first non-empty line of the version output so multi-line
+// banners do not break the doctor table layout.
 func probeBinary(bin string) (version string, err error) {
 	if _, lookErr := exec.LookPath(bin); lookErr != nil {
-		return "", lookErr
+		return "", fmt.Errorf("%s not found in PATH: %w", bin, lookErr)
 	}
-	out, runErr := exec.Command(bin, "--version").CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, runErr := exec.CommandContext(ctx, bin, "--version").CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return "", fmt.Errorf("%s --version timed out after 5s", bin)
+	}
 	if runErr != nil {
 		return "", fmt.Errorf("%s --version failed: %w", bin, runErr)
 	}
-	return strings.TrimSpace(string(out)), nil
+	for _, line := range strings.Split(string(out), "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed, nil
+		}
+	}
+	return "", fmt.Errorf("%s --version produced no output", bin)
 }
 
 func checkClaudeCLI(cfg config.Config) checkResult {

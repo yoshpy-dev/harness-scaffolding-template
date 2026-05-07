@@ -61,24 +61,24 @@ approval_policy = "never"
 # Add or extend entries to mirror .claude/hooks/ behaviour.
 # ---------------------------------------------------------------------------
 
-# Default-on: scan commit messages for accidentally leaked secrets after the
-# agent runs `git commit`. Mirrors the Claude-side `.claude/hooks/commit-msg-
-# guard` invocation so both CLIs share the same guard. `ralph doctor`
-# requires at least one [hooks.*] entry to be present once codex_hooks is
-# enabled — this is the baseline; add more below.
-[[hooks.PostToolUse]]
-match = { tool = "Bash", command_pattern = "^git commit" }
-command = ["./scripts/commit-msg-guard.sh"]
-
 # Default-on: detect U+FFFD mojibake injection after Edit/Write tool calls.
-# Mirrors `.claude/hooks/check_mojibake.sh`.
+# Reuses the same script the Claude-side hook calls (.claude/hooks/check_mojibake.sh)
+# so behaviour stays identical across CLIs. Path is a real file shipped by
+# `ralph init` — these entries satisfy `checkCodexEffectiveConfig`'s "at least
+# one [hooks.*] entry" requirement out of the box.
 [[hooks.PostToolUse]]
 match = { tool = "Edit" }
-command = ["./scripts/check_mojibake.sh"]
+command = ["./.claude/hooks/check_mojibake.sh"]
 
 [[hooks.PostToolUse]]
 match = { tool = "Write" }
-command = ["./scripts/check_mojibake.sh"]
+command = ["./.claude/hooks/check_mojibake.sh"]
+
+# Note: `scripts/commit-msg-guard.sh` is a git commit-msg hook (consumes
+# `$1` = path to .git/COMMIT_EDITMSG), NOT a Codex PostToolUse hook. Wiring
+# it as a PostToolUse on `^git commit` would invoke it with no $1 and exit 1
+# on every commit. Install it as a real `.git/hooks/commit-msg` instead, or
+# write a Codex-shaped wrapper before adding a PostToolUse entry here.
 
 # ---------------------------------------------------------------------------
 # MCP servers — uncomment and supply credentials via environment variables.
