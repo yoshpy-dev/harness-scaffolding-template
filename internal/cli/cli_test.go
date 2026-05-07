@@ -13,17 +13,24 @@ import (
 )
 
 // setupTestEmbedFS injects a minimal mock FS into scaffold.EmbeddedFS for testing.
+// Includes the Codex parity tree (.codex/ + .agents/skills/) so tests can
+// assert all three CLI surfaces are rendered by `ralph init`.
 func setupTestEmbedFS(t *testing.T) {
 	t.Helper()
 	scaffold.EmbeddedFS = fstest.MapFS{
-		"templates/base/AGENTS.md":             {Data: []byte("# AGENTS\n")},
-		"templates/base/CLAUDE.md":             {Data: []byte("# CLAUDE\n")},
-		"templates/base/ralph.toml":            {Data: []byte("[pipeline]\nmodel = \"test\"\n")},
-		"templates/base/.claude/settings.json": {Data: []byte("{}\n")},
-		"templates/packs/golang/verify.sh":     {Data: []byte("#!/bin/sh\necho ok\n")},
-		"templates/packs/golang/README.md":     {Data: []byte("# Go\n")},
-		"templates/packs/typescript/verify.sh": {Data: []byte("#!/bin/sh\necho ok\n")},
-		"templates/packs/typescript/README.md": {Data: []byte("# TS\n")},
+		"templates/base/AGENTS.md":                    {Data: []byte("# AGENTS\n")},
+		"templates/base/CLAUDE.md":                    {Data: []byte("# CLAUDE\n")},
+		"templates/base/ralph.toml":                   {Data: []byte("[pipeline]\nmodel = \"test\"\n[doctor]\nrequire_codex_cli = false\n")},
+		"templates/base/.claude/settings.json":        {Data: []byte("{}\n")},
+		"templates/base/.codex/config.toml":           {Data: []byte("model = \"gpt-5.5\"\n[features]\ncodex_hooks = true\n")},
+		"templates/base/.codex/AGENTS.override.md":    {Data: []byte("# codex overrides\n")},
+		"templates/base/.codex/README.md":             {Data: []byte("# codex setup\n")},
+		"templates/base/.agents/skills/.gitkeep":      {Data: []byte("")},
+		"templates/base/.agents/skills/spec/SKILL.md": {Data: []byte("---\nname: spec\ndescription: refine\n---\nbody\n")},
+		"templates/packs/golang/verify.sh":            {Data: []byte("#!/bin/sh\necho ok\n")},
+		"templates/packs/golang/README.md":            {Data: []byte("# Go\n")},
+		"templates/packs/typescript/verify.sh":        {Data: []byte("#!/bin/sh\necho ok\n")},
+		"templates/packs/typescript/README.md":        {Data: []byte("# TS\n")},
 	}
 }
 
@@ -65,6 +72,55 @@ func TestExecuteInit_NewProject(t *testing.T) {
 	}
 	if m.Meta.Version != "0.1.0-test" {
 		t.Errorf("manifest version = %q, want 0.1.0-test", m.Meta.Version)
+	}
+}
+
+// TestExecuteInit_RendersCodexSurfaces enforces AC-1 of the Codex CLI parity
+// spec: a fresh `ralph init` must scaffold .claude/, .codex/, AND
+// .agents/skills/ in lock-step. Without this gate the embed FS could quietly
+// drop the Codex tree (e.g. stale go:embed pattern) and produce projects that
+// look fine to Claude users but break for Codex users.
+func TestExecuteInit_RendersCodexSurfaces(t *testing.T) {
+	setupTestEmbedFS(t)
+	Version = "0.1.0-test"
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codex-parity-project")
+
+	cfg := initConfig{ProjectName: "codex-parity-project", Packs: []string{"golang"}}
+	if err := executeInit(target, cfg, false); err != nil {
+		t.Fatalf("executeInit: %v", err)
+	}
+
+	required := []string{
+		// Claude surfaces (pre-existing).
+		".claude/settings.json",
+		// Codex project surfaces.
+		".codex/config.toml",
+		".codex/AGENTS.override.md",
+		".codex/README.md",
+		// Codex skill surface.
+		".agents/skills/spec/SKILL.md",
+	}
+	for _, rel := range required {
+		if _, err := os.Stat(filepath.Join(target, rel)); err != nil {
+			t.Errorf("Codex parity: %s missing after init: %v", rel, err)
+		}
+	}
+
+	// Manifest should track every Codex-side path so future `ralph upgrade`
+	// runs can detect drift on these files.
+	m, err := scaffold.ReadManifest(filepath.Join(target, ".ralph", "manifest.toml"))
+	if err != nil {
+		t.Fatalf("ReadManifest: %v", err)
+	}
+	for _, rel := range []string{
+		".codex/config.toml",
+		".agents/skills/spec/SKILL.md",
+	} {
+		if _, ok := m.Files[rel]; !ok {
+			t.Errorf("manifest missing Codex-side path %q", rel)
+		}
 	}
 }
 
