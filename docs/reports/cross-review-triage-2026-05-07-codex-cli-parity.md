@@ -5,37 +5,65 @@
 - Base branch: main
 - Driver: claude  Reviewer: codex
 - Triager: Claude Code (main context)
-- Self-review cross-ref: yes (`docs/reports/self-review-2026-05-07-codex-cli-parity.md`)
-- Cycle: 1/2 (cap NOT reached)
-- Total reviewer findings: 4
-- After triage: ACTION_REQUIRED=3, WORTH_CONSIDERING=1, DISMISSED=0
+- Self-review cross-ref: yes (`docs/reports/self-review-2026-05-07-codex-cli-parity.md`, cycle-2 section appended)
+- Cycle: 2/2 (cap reached)
+- Total reviewer findings (this cycle): 0 (Codex `codex exec review` aborted with `ERROR: You've hit your usage limit`)
+- After triage: ACTION_REQUIRED=0, WORTH_CONSIDERING=0, DISMISSED=0
 
 ## Triage context
 
 - Active plan: `docs/plans/active/2026-05-07-codex-cli-parity.md`
-- Self-review report: `docs/reports/self-review-2026-05-07-codex-cli-parity.md` (no CRITICAL findings; HIGH items already addressed in commit `82679f1`)
-- Verify report: `docs/reports/verify-2026-05-07-codex-cli-parity.md` (PASS)
-- Test report: `docs/reports/test-2026-05-07-codex-cli-parity.md` (PASS)
-- Implementation context summary: 12 commits since main; standard-flow Codex parity. Loop driver scope-out tracked in #44.
+- Self-review report: `docs/reports/self-review-2026-05-07-codex-cli-parity.md` (cycle-1 + cycle-2 sections; all CRITICAL items resolved in commit `79d7a73`)
+- Verify report: `docs/reports/verify-2026-05-07-codex-cli-parity.md` (PASS, cycle-2 section)
+- Test report: `docs/reports/test-2026-05-07-codex-cli-parity.md` (PASS, cycle-2 section, 220/220 go tests, all cycle-2 fix-targeted suites green)
+- Sync-docs report: `docs/reports/sync-docs-2026-05-07-codex-cli-parity.md` (cycle-2 doc drift on `.codex/README.md` Hooks section closed)
+- Cycle-1 cross-review (this same file before overwrite): produced ACTION_REQUIRED ×3 + WORTH_CONSIDERING ×1; all three ACTION_REQUIRED items addressed in commits `3abd1d7` and `79d7a73`. The single WORTH_CONSIDERING (dual-CLI fallback default) was deferred per the cycle-1 user decision and remains tracked in docs/recipes/codex-setup.md operator guidance.
+
+## Reviewer outcome
+
+`codex exec review --base main` returned no findings — the run aborted with:
+
+```
+ERROR: You've hit your usage limit. To get more access now, send a request to your admin or try again at 7:59 PM.
+codex
+Review was interrupted. Please re-run /review and wait for it to complete.
+```
+
+Per `.claude/skills/cross-review/SKILL.md` Step 3 the documented behaviour for an unavailable reviewer is "silently skip and proceed to /pr". A usage-limit lockout is functionally equivalent — the reviewer binary is on PATH but the upstream API is refusing requests for the rest of this window. The skill body's `./scripts/codex-check.sh` probe (Step 3) would still pass because it only validates `codex --version`; the lockout only surfaces at request time.
+
+The cap-reached path (cycle 2/2) treats this as Case C (no findings) for purposes of advancing to `/pr`, with the caveat below.
+
+## What this means for the cycle-2 gate
+
+Cycle-2 lost its independent cross-model second opinion. The compensating evidence on this branch:
+
+1. **Cycle-1 cross-review already exercised the Codex reviewer** against an earlier diff and produced material findings (ACTION_REQUIRED ×3). Those findings were all resolved before cycle-2; the cycle-2 delta is the *fix* of those findings, not a new feature surface.
+2. **Cycle-2 self-review** produced two CRITICAL findings of its own against the cycle-1 fix; both were resolved in `79d7a73` before this cross-review attempt.
+3. **Cycle-2 verify and test** both PASS with no AC regression (`docs/reports/verify-2026-05-07-codex-cli-parity.md` and `-test-` cycle-2 sections).
+4. **Drift, pipeline, and skill-sync gates** all green via `./scripts/run-verify.sh` (latest evidence: `docs/evidence/verify-2026-05-07-100810.log`).
+
+Concrete consequence: the cycle-2 cross-review is functionally a "skip on reviewer unavailable" rather than an independent green light. Recording the lockout transparently here so `/pr` can include it under "Known gaps" if the maintainer wants to flag the missing pass before the manual smoke test.
 
 ## ACTION_REQUIRED
 
-| # | Codex finding | Triage rationale | Affected file(s) |
-|---|---------------|------------------|-------------------|
-| 1 | Verify the Codex binary before passing doctor — `LookPath("codex")` succeeds on stale/broken shims; `ralph doctor` reports `pass` without confirming the binary actually runs. | Real defect against AC-6 ("ralph doctor が Codex CLI version 表示 + verify ステータス"). The repo already has `scripts/codex-check.sh` that runs `codex --version`; doctor should call/replicate it. Same gap exists in `checkClaudeCLI` so the symmetric fix lifts both. Small, surgical change. | `internal/cli/doctor.go:117-134` (`checkClaudeCLI`/`checkCodexCLI`) |
-| 2 | Wire at least one Codex hook by default — every `[[hooks.*]]` entry in the shipped template is commented out, so `checkCodexEffectiveConfig` reports the no-hooks warning on every fresh `ralph init`. | Real contract drift. `.codex/README.md` already says hooks "shell out to the same `scripts/` used by `.claude/hooks/`" — but ships zero entries. Result: every new project trips the doctor warning despite intending to be hook-equipped. Fix: ship at least the `commit-msg-guard.sh` PostToolUse entry so Claude/Codex parity is real, not aspirational. | `templates/base/.codex/config.toml:74-76` |
-| 3 | Make the cross-review report template bidirectional — header hard-codes `Triager: Claude Code` and column captions still say "Codex finding"; conflicts with the new `Driver: <…> Reviewer: <…>` requirement. | Real misalignment with Slice 3 bidirectional contract (AC-5). When Codex drives, the template captions misrepresent which side produced findings. Fix is text-only. | `docs/reports/templates/cross-review-triage-report.md:6,20,25,30` (and `templates/base/` mirror) |
+| # | Reviewer finding | Triage rationale | Affected file(s) |
+|---|-------------------|------------------|-------------------|
+| — | (none — reviewer unavailable) | — | — |
 
 ## WORTH_CONSIDERING
 
-| # | Codex finding | Triage rationale | Affected file(s) |
-|---|---------------|------------------|-------------------|
-| 1 | Treat dual-CLI Codex sessions as Codex-driven — fallback when both `codex` and `claude` are on PATH and `RALPH_PRIMARY_CLI` is unset resolves to `driver=claude / reviewer=codex`, so a Codex user who forgot to export the env var ends up running `codex` against `codex`. | Real concern, but already partially mitigated: `.codex/AGENTS.override.md` and `docs/recipes/codex-setup.md` instruct Codex users to export `RALPH_PRIMARY_CLI=codex`, and the same-model failure mode produces a same-model "review" rather than data corruption. The cleanest in-skill fix would be a runtime warning when both CLIs are present without the env var, but that overlaps with the broader detection problem (a skill cannot reliably know which CLI is invoking it). Worth keeping on the radar; not blocking. | `.claude/skills/cross-review/SKILL.md:39`, `.agents/skills/cross-review/SKILL.md:39` |
+| # | Reviewer finding | Triage rationale | Affected file(s) |
+|---|-------------------|------------------|-------------------|
+| — | (none — reviewer unavailable) | — | — |
 
 ## DISMISSED
 
-| # | Codex finding | Dismissal reason | Category |
-|---|---------------|------------------|----------|
+| # | Reviewer finding | Dismissal reason | Category |
+|---|-------------------|------------------|----------|
 | — | — | — | — |
 
 Categories: false-positive, already-addressed, style-preference, out-of-scope, context-aware-safe
+
+## Carry-over from cycle-1
+
+- WORTH_CONSIDERING #1 (dual-CLI fallback default in `cross-review` skill body when both `codex` and `claude` are on PATH and `RALPH_PRIMARY_CLI` is unset): documented in `docs/recipes/codex-setup.md` and `.codex/AGENTS.override.md`; not blocking.
